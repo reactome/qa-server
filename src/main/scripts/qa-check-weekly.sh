@@ -111,6 +111,18 @@ rls_qa_rpt_dir="$current_rpt_dir/ReleaseQA"
 
 echo "The Release QA reports are in $rls_qa_out_dir."
 
+# Find the diffs.
+dates=`(cd $reports_dir; ls -d * | grep -E '[[:digit:]]{8}' | sort -r | head -n 2)`
+if [ `echo $dates | wc -w` -eq 2 ]; then
+    echo "Taking the difference between the `echo $dates | sed 's/ / and /'` reports."
+    diff="$bin_dir/diff.sh"
+    eval "$diff $dates"
+    rc=$?
+    if [ "${rc}" -ne 0 ]; then
+        (>&2 echo "Diff was not successful")
+        # This is not fatal; a warning suffices.
+    fi
+fi
 
 ## Notification ##
 
