@@ -13,6 +13,7 @@ import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -22,6 +23,8 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import javax.mail.Address;
 import javax.mail.Message;
 import javax.mail.Session;
@@ -139,11 +142,12 @@ public class Notify {
         // The {curator: {report file: html file}} map.
         Map<String, Map<File, File>> notifications =
                 new HashMap<String, Map<File, File>>();
-        // Coordinators always receive notification.
+        // Coordinators always receive notification, so prepare their
+        // notification entry up front.
         for (String coordinator: COORDINATOR_NAMES) {
             notifications.put(coordinator, new HashMap<File, File>());
         }
-
+        
         // The prefix to prepend to URLs.
         String host = InetAddress.getLocalHost().getCanonicalHostName();
         String hostPrefix = PROTOCOL + "://" + host;
@@ -154,15 +158,23 @@ public class Notify {
             System.err.println("Reports directory not found: " + rptsDir);
             System.exit(1);
         }
+        // The report {file name: heading} map.
+        Map<String, String> rptTitles = new HashMap<String, String>();
         // Iterator over each reports subdirectory.
         for (File dir : rptsDir.listFiles()) {
             for (File file: dir.listFiles()) {
-                addNotifications(file, emailLookup.keySet(), hostPrefix, notifications);
+                String fileName = file.getName();
+                // Only include .txt files.
+                if (fileName.endsWith(".txt")) {
+                    String title = toReportTitle(fileName);
+                    rptTitles.put(fileName, title);
+                    addNotifications(file, title, emailLookup.keySet(), hostPrefix, notifications);
+                }
             }
         }
-
+        
         // Notify the modifiers.
-        sendNotifications(notifications, hostPrefix, emailLookup, props, rptsDir);
+        sendNotifications(notifications, rptTitles, hostPrefix, emailLookup, props, rptsDir);
     }
     
     private static Properties loadProperties() throws IOException {
@@ -201,7 +213,7 @@ public class Notify {
                 continue;
             }
             String[] content = line.split(",");
-            String name = canonicalizeName(content[1], content[2]);
+            String name = canonicalizeRecipientName(content[1], content[2]);
             String email = content[3];
             map.put(name, email);
             // The first column is the coordinator flag.
@@ -241,7 +253,7 @@ public class Notify {
         return new QAReport(headers, lines);
    }
 
-   private static void addNotifications(File rptFile, Set<String> curators,
+   private static void addNotifications(File rptFile, String title, Set<String> curators,
            String hostPrefix, Map<String, Map<File, File>> notifications) throws Exception {
        // The QA report.
        QAReport report = getQAReport(rptFile);
@@ -271,15 +283,7 @@ public class Notify {
            linesMap.put(coordinator, new ArrayList<String>());
        }
        // The DB ID column indexes match the pattern /.*DB_?ID/.
-       Set<Integer> dbIdNdxs = new HashSet<Integer>();
-       for (String dbHdr: DB_ID_HEADERS) {
-           for (int i = 0; i < report.headers.size(); i++) {
-               String hdr = report.headers.get(i);
-               if (hdr.endsWith(dbHdr)) {
-                   dbIdNdxs.add(i);
-               }
-           }
-       }
+       int dbIdNdx = getDbIdColumnIndex(report);
        // The DB ID link URL prefix.
        String instUrlPrefix = hostPrefix + INSTANCE_BROWSER_URL;
        // Apportion report lines to the curators.       
@@ -296,7 +300,7 @@ public class Notify {
            }
 
            // Convert the report line to HTML.
-           String html = createHTMLTableRow(line, dbIdNdxs, instUrlPrefix);
+           String html = createHTMLTableRow(line, dbIdNdx, instUrlPrefix);
 
            // Coordinators get every line.
            for (String coordinator: COORDINATOR_NAMES) {
@@ -313,7 +317,7 @@ public class Notify {
                if (authorFields.length > 1) {
                    String last = authorFields[0];
                    String firstOrInitial = authorFields[1];
-                   String canonicalAuthor = canonicalizeName(last, firstOrInitial);
+                   String canonicalAuthor = canonicalizeRecipientName(last, firstOrInitial);
                    if (curators.contains(canonicalAuthor)) {
                        List<String> lines = linesMap.get(canonicalAuthor);
                        if (lines == null) {
@@ -338,11 +342,13 @@ public class Notify {
            // The report file base name before the extension.
            String prefix = fileName.split("\\.")[0];
            // Make the custom curator file name.
-           String rptHdg = prefix.replace('_', ' ');
            String suffix = curator.replaceAll("[^\\w]", "").toLowerCase();
            String base = prefix + "_" + suffix;
            String curatorFileName = base + ".html";
            File curatorFile = new File(dir, curatorFileName);
+           if (prefix.endsWith("_diff")) {
+               title += " New Issues";
+           }
            // Write the custom curator file.
            BufferedWriter bw = new BufferedWriter(new FileWriter(curatorFile));
            try {
@@ -358,7 +364,7 @@ public class Notify {
                bw.write("<body>");
                bw.newLine();
                bw.write("<h1>");
-               bw.write(rptHdg);
+               bw.write(title);
                bw.write("</h1>");
                bw.newLine();
                bw.write("<table>");
@@ -390,13 +396,25 @@ public class Notify {
        }
     }
 
-   /**
-    * Makes an URL-safe version of the name in the form last,initial.
-    * @param last
-    * @param firstOrInitial
-    * @return the standard name representation
-    */
-    private static String canonicalizeName(String last, String firstOrInitial) {
+    private static int getDbIdColumnIndex(QAReport report) {
+        for (String dbHdr: DB_ID_HEADERS) {
+            for (int i = 0; i < report.headers.size(); i++) {
+                String hdr = report.headers.get(i);
+                if (hdr.endsWith(dbHdr)) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Makes an URL-safe version of the name in the form last,initial.
+     * @param last
+     * @param firstOrInitial
+     * @return the standard name representation
+     */
+    private static String canonicalizeRecipientName(String last, String firstOrInitial) {
         // Make the last name URL-safe by removing non-word characters.
         last = last.replaceAll("[^\\w]", "");
         // Only use an initial.
@@ -417,13 +435,13 @@ public class Notify {
         return sb.toString();
     }
 
-    private static String createHTMLTableRow(List<String> line, Set<Integer> dbIdNdxs, String instUrlPrefix) {
+    private static String createHTMLTableRow(List<String> line, int dbIdNdx, String instUrlPrefix) {
         StringBuffer sb = new StringBuffer();
         sb.append("<tr>");
         for (int i = 0; i < line.size(); i++) {
             String col = line.get(i);
             sb.append("<td>");
-            if (dbIdNdxs.contains(i)) {
+            if (dbIdNdx == i) {
                 sb.append("<a href=");
                 sb.append(instUrlPrefix);
                 sb.append(col);
@@ -442,8 +460,8 @@ public class Notify {
     }
 
     private static void sendNotifications(Map<String, Map<File, File>> notifications,
-            String hostPrefix, Map<String, String> emailLookup, Properties props, File rptsDir)
-            throws Exception {
+            Map<String, String> rptTitles, String hostPrefix, Map<String, String> emailLookup,
+            Properties props, File rptsDir) throws Exception {
         if (!hostPrefix.endsWith("/")) {
             hostPrefix = hostPrefix + "/";
         }
@@ -451,12 +469,12 @@ public class Notify {
         for (Entry<String, Map<File, File>> ntf: notifications.entrySet()) {
             String author = ntf.getKey();
             String recipient = emailLookup.get(author);
-            notify(recipient, dirUrl, props, ntf.getValue());
+            notify(recipient, dirUrl, props, rptTitles, ntf.getValue());
         }
     }
     
     private static void notify(String recipient, String dirUrl, Properties properties,
-            Map<File, File> rptHtmlMap) throws Exception {
+            Map<String, String> rptTitles, Map<File, File> rptHtmlMap) throws Exception {
         Session session = Session.getDefaultInstance(properties);
         MimeMessage message = new MimeMessage(session);
         
@@ -470,41 +488,118 @@ public class Notify {
         } else {
             sb.append(NONCOORDINATOR_PRELUDE + NL + NL);
         }
-        Function<File, String> classifier = f -> f.getParentFile().getName();
-        Map<String, List<File>> groups = rptHtmlMap.keySet().stream()
-                .collect(Collectors.groupingBy(classifier));
+        // Sort the reports by name.
+        Comparator<File> compare = new Comparator<File>() {
+
+            @Override
+            public int compare(File f1, File f2) {
+                return f1.getName().compareTo(f2.getName());
+            }
+        
+        };
+        List<File> rptFiles = rptHtmlMap.keySet().stream()
+                .sorted(compare).collect(Collectors.toList());
+        // The diff email hyperlink items are captured in a separate group.
+        List<String> diffs = new ArrayList<String>();
+        // The full QA report hyperlinks.
         sb.append("<ul>");
-        for (Entry<String, List<File>> entry: groups.entrySet()) {
+        for (File rptFile: rptFiles) {
             // The QA reports subdirectory.
-            String dir = entry.getKey();
+            String dir = rptFile.getParentFile().getName(); 
             // The report URL prefix.
             String prefix = dirUrl + dir + "/";
-            // Format the link for each report.
-            for (File rptFile: entry.getValue()) {
-                String rptName = rptFile.getName().split("\\.")[0];
-                File htmlFile = rptHtmlMap.get(rptFile);
-                String htmlUrl = prefix + htmlFile.getName();
-                String rptUrl = prefix + rptFile.getName();
-                sb.append("<li>");
-                sb.append("<a href='" + htmlUrl + "'>");
-                sb.append(rptName);
-                sb.append("</a>");
-                // Coordinators get a link to the raw CSV file as well.
-                if (COORDINATOR_EMAILS.contains(recipient)) {
-                    sb.append(" (<a href='" + rptUrl + "'>");
-                    sb.append("tsv</a>)");
-                }
-                sb.append("</li>");
-                sb.append(NL);
+            // The HTML file corresponding to the report file.
+            File htmlFile = rptHtmlMap.get(rptFile);
+            // The report title.
+            String title = rptTitles.get(rptFile.getName());
+            // The hyperlink list item.
+            String links = formatReportItem(recipient, htmlFile, title, prefix, rptFile);
+            // Capture diffs for later.
+            if (rptFile.getName().endsWith("_diff.txt")) {
+                diffs.add(links);
+            } else {
+                sb.append(links);
             }
         }
         sb.append("</ul>");
         sb.append(NL);
+        // The diff email QA report hyperlinks.
+        if (!diffs.isEmpty()) {
+            sb.append("<br/>");
+            sb.append("<h2>");
+            sb.append("New issues:");
+            sb.append("</h2>");
+            sb.append(NL);
+            sb.append("<ul>");
+            for (String diff: diffs) {
+                sb.append(diff);
+            }
+            sb.append("</ul>");
+            sb.append(NL);
+        }
+        
         message.setContent(sb.toString(), "text/html");
         Address address = new InternetAddress(recipient);
         message.setRecipient(Message.RecipientType.TO, address);
         Transport.send(message);
         logger.info("Sent notification to " + recipient);
    }
+
+   private static String formatReportItem(String recipient, File htmlFile,
+            String title, String prefix, File rptFile) {
+        StringBuffer sb = new StringBuffer();
+        String rptFileName = rptFile.getName();
+        String htmlUrl = prefix + htmlFile.getName();
+        String rptUrl = prefix + rptFileName;
+        sb.append("<li>");
+        sb.append("<a href='" + htmlUrl + "'>");
+        sb.append(title);
+        sb.append("</a>");
+        // Coordinators get a link to the raw CSV file as well.
+        if (!rptFileName.endsWith("_diff.txt") && COORDINATOR_EMAILS.contains(recipient)) {
+            sb.append(" (<a href='" + rptUrl + "'>");
+            sb.append("tsv</a>)");
+        }
+        sb.append("</li>");
+        sb.append(NL);
+        
+        return sb.toString();
+    }
+
+protected static String toReportTitle(String fileName) {
+    String baseName = fileName.split("(_diff)?\\.")[0];
+    // Remove underscores.
+    String[] nameParts = baseName.split("_");
+    // Convert the name to camelCase.
+    String camelized = Stream.of(nameParts)
+            .map(s -> s.substring(0, 1).toUpperCase() + s.substring(1))
+            .collect(Collectors.joining());
+    // Separate the camelCase name by spaces where appropriate.
+    String rptName = splitCamelCase(camelized);
+    return rptName;
+}
+    
+    /**
+     * Converts a camelCase string to a more legible text.
+     * 
+     * Lifted from a StackOverflow
+     * <a href="https://stackoverflow.com/questions/2559759/how-do-i-convert-camelcase-into-human-readable-names-in-java>
+     * snippet
+     * </a>
+     * 
+     * @param s the input camelCase string
+     * @return the hmanized text
+     */
+    private static String splitCamelCase(String s) {
+        return s.replaceAll(
+                String.format("%s|%s|%s",
+                   "(?<=[A-Z])(?=[A-Z][a-z])",
+                   "(?<=[^A-Z])(?=[A-Z])",
+                   "(?<=[A-Za-z])(?=[^A-Za-z])"
+                ),
+                " "
+             );
+          }
+
    
 }
