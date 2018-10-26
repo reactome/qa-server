@@ -43,7 +43,7 @@ fi
 # Note: It is simpler to use the Linux head -n -2 command below.
 # However, that it is not supported on BSD-based OSes, e.g. Mac OS.
 # The following code is compatible with both Linux and Mac OS.
-dates_cnt=`(cd $reports_dir; ls -d * | wc -w)`
+dates_cnt=`(cd $reports_dir; ls -d * | grep -E '[[:digit:]]{8}' | wc -w)`
 # If nothing to prune, then we are done.
 if (( $dates_cnt <= $n )); then
     exit 0
