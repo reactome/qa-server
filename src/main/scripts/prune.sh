@@ -2,13 +2,13 @@
 #
 # Prunes all but the n most recent slice databases
 # and reports, where n is the optional command argument
-# (default 2).
+# (default 4).
 #
 
-# The number of weekly reports to keep (default 2).
+# The number of weekly reports to keep.
 n=$1
 if [ -z "$n" ]; then
-    n=2
+    n=4
 fi
 
 # This script is assumed to reside in the bin subdirectory
