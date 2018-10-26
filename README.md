@@ -37,12 +37,9 @@ This content is built as follows:
    executing that runnable jar quietly exits immediately with no
    output.
 
-6. Export `release-qa` as a runnable jar file with main class
-   `org.reactome.release.qa.Notify` into the staging file
-   `lib/Notify-jar-with-dependencies.jar` by running Maven
-   on the `notify_pom.xml`, e.g.:
-
-       mvn -f notify_pom.xml package
+6. Build the `qa-server` Maven package and copy the resulting
+   `target` jar with dependencies to the staging file
+   `lib/Notify-jar-with-dependencies.jar`.
 
 7. Copy the relevant configuration files into the staging area.
    The configurations are documented in the respective projects,
