@@ -139,12 +139,12 @@ public class Notify {
             System.exit(1);
         }
         
-        // The {curator: {report file: html file}} map.
+        // The {recipient: {report file: html file}} map.
         Map<String, Map<File, File>> notifications =
                 new HashMap<String, Map<File, File>>();
         // Coordinators always receive notification, so prepare their
         // notification entry up front.
-        for (String coordinator: COORDINATOR_NAMES) {
+        for (String coordinator: COORDINATOR_EMAILS) {
             notifications.put(coordinator, new HashMap<File, File>());
         }
         
@@ -168,7 +168,7 @@ public class Notify {
                 if (fileName.endsWith(".txt")) {
                     String title = toReportTitle(fileName);
                     rptTitles.put(fileName, title);
-                    addNotifications(file, title, emailLookup.keySet(), hostPrefix, notifications);
+                    addNotifications(file, title, emailLookup, hostPrefix, notifications);
                 }
             }
         }
@@ -253,7 +253,7 @@ public class Notify {
         return new QAReport(headers, lines);
    }
 
-   private static void addNotifications(File rptFile, String title, Set<String> curators,
+   private static void addNotifications(File rptFile, String title, Map<String, String> emailLookup,
            String hostPrefix, Map<String, Map<File, File>> notifications) throws Exception {
        // The QA report.
        QAReport report = getQAReport(rptFile);
@@ -276,10 +276,10 @@ public class Notify {
        if (!hostPrefix.endsWith("/")) {
            hostPrefix = hostPrefix + "/";
        }
-       // The {curator: lines} map. 
+       // The {curator: lines} map.
        Map<String, List<String>> linesMap = new HashMap<String, List<String>>();
        // Coordinators are notified of every file.
-       for (String coordinator: COORDINATOR_NAMES) {
+       for (String coordinator: COORDINATOR_EMAILS) {
            linesMap.put(coordinator, new ArrayList<String>());
        }
        // The DB ID column indexes match the pattern /.*DB_?ID/.
@@ -303,7 +303,7 @@ public class Notify {
            String html = createHTMLTableRow(line, dbIdNdx, instUrlPrefix);
 
            // Coordinators get every line.
-           for (String coordinator: COORDINATOR_NAMES) {
+           for (String coordinator: COORDINATOR_EMAILS) {
                List<String> lines = linesMap.get(coordinator);
                lines.add(html);
            }
@@ -318,11 +318,18 @@ public class Notify {
                    String last = authorFields[0];
                    String firstOrInitial = authorFields[1];
                    String canonicalAuthor = canonicalizeRecipientName(last, firstOrInitial);
-                   if (curators.contains(canonicalAuthor)) {
-                       List<String> lines = linesMap.get(canonicalAuthor);
+                   // A coordinator might be an author, but already
+                   // has the lines.
+                   if (COORDINATOR_NAMES.contains(canonicalAuthor)) {
+                       continue;
+                   }
+                   // The email address.
+                   String recipient = emailLookup.get(canonicalAuthor);
+                   if (recipient != null) {
+                       List<String> lines = linesMap.get(recipient);
                        if (lines == null) {
                            lines = new ArrayList<String>();
-                           linesMap.put(canonicalAuthor, lines);
+                           linesMap.put(recipient, lines);
                        }
                        lines.add(html);
                    }
@@ -332,17 +339,27 @@ public class Notify {
 
        // The HTML table header.
        String header = createHTMLTableHeader(report);
+       // The reverse curator {email: name} lookup.
+       Map<String, String> emailNameMap = new HashMap<String, String>(emailLookup.size());
+       for (Entry<String, String> entry: emailLookup.entrySet()) {
+           String name = entry.getKey();
+           String address = entry.getValue();
+           if (!emailNameMap.containsKey(address)) {
+               emailNameMap.put(address, name);
+           }
+       }
 
        // Make the curator-specific HTML files.
        for (Entry<String, List<String>> entry: linesMap.entrySet()) {
-           String curator = entry.getKey();
+           String recipient = entry.getKey();
            List<String> lines = entry.getValue();
            File dir = rptFile.getParentFile();
            String fileName = rptFile.getName();
            // The report file base name before the extension.
            String prefix = fileName.split("\\.")[0];
            // Make the custom curator file name.
-           String suffix = curator.replaceAll("[^\\w]", "").toLowerCase();
+           String name = emailNameMap.get(recipient);
+           String suffix = name.replaceAll("[^\\w]", "").toLowerCase();
            String base = prefix + "_" + suffix;
            String curatorFileName = base + ".html";
            File curatorFile = new File(dir, curatorFileName);
@@ -388,10 +405,10 @@ public class Notify {
            }
            // Add the custom curator file to the
            // {curator: {report file: curator file}} map.
-           Map<File, File> curatorNtfs = notifications.get(curator);
+           Map<File, File> curatorNtfs = notifications.get(recipient);
            if (curatorNtfs == null) {
                curatorNtfs = new HashMap<File, File>();
-               notifications.put(curator, curatorNtfs);
+               notifications.put(recipient, curatorNtfs);
            }
            curatorNtfs.put(rptFile, curatorFile);
        }
@@ -468,8 +485,7 @@ public class Notify {
         }
         String dirUrl = hostPrefix + "QAReports/" + rptsDir.getName();
         for (Entry<String, Map<File, File>> ntf: notifications.entrySet()) {
-            String author = ntf.getKey();
-            String recipient = emailLookup.get(author);
+            String recipient = ntf.getKey();
             notify(recipient, dirUrl, props, rptTitles, ntf.getValue());
         }
     }
@@ -566,19 +582,24 @@ public class Notify {
         
         return sb.toString();
     }
-
-protected static String toReportTitle(String fileName) {
-    String baseName = fileName.split("(_diff)?\\.")[0];
-    // Remove underscores.
-    String[] nameParts = baseName.split("_");
-    // Convert the name to camelCase.
-    String camelized = Stream.of(nameParts)
-            .map(s -> s.substring(0, 1).toUpperCase() + s.substring(1))
-            .collect(Collectors.joining());
-    // Separate the camelCase name by spaces where appropriate.
-    String rptName = splitCamelCase(camelized);
-    return rptName;
-}
+    
+    /**
+     * Replaces underscores in the report display name portion of the given
+     * file name with spaces. If the display name portion is camelCase, then
+     * each capitalized word is separated by a space.
+     * 
+     * @param fileName the report file name
+     * @return the report title
+     */
+    private static String toReportTitle(String fileName) {
+        String baseName = fileName.split("(_diff)?\\.")[0];
+        // The display names are either camelCase or underscored.
+        if (baseName.contains("_")) {
+            return baseName.replace("_", " ");
+        } else {
+            return splitCamelCase(baseName);
+        }
+    }
     
     /**
      * Converts a camelCase string to a more legible text.
