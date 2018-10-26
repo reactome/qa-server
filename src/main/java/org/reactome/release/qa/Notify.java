@@ -173,7 +173,7 @@ public class Notify {
             }
         }
         
-        // Notify the modifiers.
+        // Notify the coordinators and modifiers.
         sendNotifications(notifications, rptTitles, hostPrefix, emailLookup, props, rptsDir);
     }
     
@@ -346,8 +346,9 @@ public class Notify {
            String base = prefix + "_" + suffix;
            String curatorFileName = base + ".html";
            File curatorFile = new File(dir, curatorFileName);
+           String effectiveTitle = title;
            if (prefix.endsWith("_diff")) {
-               title += " New Issues";
+               effectiveTitle += " New Issues";
            }
            // Write the custom curator file.
            BufferedWriter bw = new BufferedWriter(new FileWriter(curatorFile));
@@ -364,7 +365,7 @@ public class Notify {
                bw.write("<body>");
                bw.newLine();
                bw.write("<h1>");
-               bw.write(title);
+               bw.write(effectiveTitle);
                bw.write("</h1>");
                bw.newLine();
                bw.write("<table>");
@@ -550,13 +551,13 @@ public class Notify {
         StringBuffer sb = new StringBuffer();
         String rptFileName = rptFile.getName();
         String htmlUrl = prefix + htmlFile.getName();
-        String rptUrl = prefix + rptFileName;
         sb.append("<li>");
         sb.append("<a href='" + htmlUrl + "'>");
         sb.append(title);
         sb.append("</a>");
         // Coordinators get a link to the raw CSV file as well.
         if (!rptFileName.endsWith("_diff.txt") && COORDINATOR_EMAILS.contains(recipient)) {
+            String rptUrl = prefix + rptFileName;
             sb.append(" (<a href='" + rptUrl + "'>");
             sb.append("tsv</a>)");
         }
