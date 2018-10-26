@@ -3,14 +3,21 @@
 # Runs the weekly QA checks.
 #
 # This script is assumed to reside in the bin subdirectory
-# of the check location. BASH_SOURCE[0] followed by readlink
+# of the QA check location. BASH_SOURCE[0] followed by readlink
 # is preferred to $0 (cf. https://gist.github.com/olegch/1730673).
 here="${BASH_SOURCE[0]}"
-while [ -h "$here" ]; do
-    here="$(readlink "$here")"
+resolved="$here"
+while [ -h "$resolved" ]; do
+    resolved="$(readlink "$resolved")"
 done
-bin_dir=`dirname $here`
+bin_dir=`dirname $resolved`
 share=`(cd $bin_dir/..; pwd)`
+
+# Help is trivial.
+if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then 
+    echo "Usage: `basename $resolved`"
+    exit 0
+fi
 
 # The date file and database name suffix.
 date=`date "+%Y%m%d"`
@@ -32,10 +39,11 @@ slicing_jar="$share/lib/SlicingTool-jar-with-dependencies.jar"
 # The slice database name.
 slice_db="test_slice_$date"
 
-# If reports exist for the current date, then there
-# is a database. Otherwise, make the slice database.
+# If the reports subdirectory exist for the current date,
+# then there is a database. Otherwise, make the slice database.
 if [ -e "$current_rpt_dir" ]; then
-    echo "Skipping slicing, since the reports directory already exists: $current_rpt_dir"
+    echo "Skipping slicing, since the reports directory already exists: $current_rpt_dir."
+    echo "The slicing database is therefore assumed to exist: $slice_db."
 else
     slicing_opts="--slicingDbName $slice_db"
     echo "Running the slicing tool..."
@@ -45,7 +53,7 @@ else
         (>&2 echo "Slicing was not successful")
         exit ${rc}
     fi
-    echo "Slicing database created: $slice_db"
+    echo "Slicing database created: $slice_db."
 fi
 
 # The db command line option overrides the config file in
@@ -111,12 +119,14 @@ rls_qa_rpt_dir="$current_rpt_dir/ReleaseQA"
 
 echo "The Release QA reports are in $rls_qa_out_dir."
 
+
+## Difference ##
+
 # Find the diffs.
 dates=`(cd $reports_dir; ls -d * | grep -E '[[:digit:]]{8}' | sort -r | head -n 2)`
 if [ `echo $dates | wc -w` -eq 2 ]; then
-    echo "Taking the difference between the `echo $dates | sed 's/ / and /'` reports."
-    diff="$bin_dir/diff.sh"
-    eval "$diff $dates"
+    echo "Taking the difference between the `echo $dates | sed 's/ / and /'` reports..."
+    (cd $reports_dir; $bin_dir/diff.sh $dates)
     rc=$?
     if [ "${rc}" -ne 0 ]; then
         (>&2 echo "Diff was not successful")
