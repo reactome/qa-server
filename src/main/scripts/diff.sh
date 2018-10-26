@@ -11,7 +11,7 @@ fi
 new_dir=$1
 old_dir=$2
 
-new_files=`find $new_dir -name '*.txt' | grep -v '_'`
+new_files=`find $new_dir -name '*.txt' | grep -v '_diff.txt' | grep -v '.html'`
 for new_file in $new_files; do
     old_file=`echo $new_file | sed "s,$new_dir,$old_dir,"`
     diff_file=`echo $new_file | sed "s/\.txt/_diff.txt/"`
