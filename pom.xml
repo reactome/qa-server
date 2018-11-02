@@ -9,7 +9,8 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <log4j2.version>2.11.0</log4j2.version>
         <javax.mail.version>1.4</javax.mail.version>
-	</properties>
+        <opencsv.version>4.2</opencsv.version>
+    </properties>
 
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>org.reactome</groupId>
@@ -130,6 +131,12 @@
             <groupId>org.apache.logging.log4j</groupId>
             <artifactId>log4j-core</artifactId>
             <version>${log4j2.version}</version>
+        </dependency>
+        <!--  The CSV parser. -->
+        <dependency>
+            <groupId>com.opencsv</groupId>
+            <artifactId>opencsv</artifactId>
+            <version>${opencsv.version}</version>
         </dependency>
         <!--  javax.mail for notification -->
         <dependency>
