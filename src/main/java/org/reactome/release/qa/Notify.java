@@ -5,6 +5,7 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,10 +22,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
-import java.util.function.Function;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
 import javax.mail.Address;
 import javax.mail.Message;
 import javax.mail.Session;
@@ -34,6 +33,8 @@ import javax.mail.internet.MimeMessage;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import com.opencsv.CSVReaderHeaderAware;
 
 /**
  * Notifies the responsible curators of automated QA reports.
@@ -76,6 +77,8 @@ public class Notify {
     private static final String EMAIL_LOOKUP_FILE = "curators.csv";
     
     private static final String MAIL_CONFIG_FILE = "mail.properties";
+    
+    private static final String DESCRIPTIONS_FILE = "descriptions.csv";
     
     // The release coordinators.
     private static final Collection<String> COORDINATOR_NAMES =
@@ -139,6 +142,16 @@ public class Notify {
             System.exit(1);
         }
         
+        // The {curator:email} lookup map.
+        Map<String, String> descriptions = null;
+        try {
+            descriptions = getDescriptions();
+        } catch (Exception e) {
+            System.err.println("Could not read the descriptions file: ");
+            System.err.println(e);
+            System.exit(1);
+        }
+        
         // The {recipient: {report file: html file}} map.
         Map<String, Map<File, File>> notifications =
                 new HashMap<String, Map<File, File>>();
@@ -168,7 +181,9 @@ public class Notify {
                 if (fileName.endsWith(".txt")) {
                     String title = toReportTitle(fileName);
                     rptTitles.put(fileName, title);
-                    addNotifications(file, title, emailLookup, hostPrefix, notifications);
+                    String displayName = toDisplayName(fileName);
+                    String description = descriptions.get(displayName);
+                    addNotifications(file, title, emailLookup, description, hostPrefix, notifications);
                 }
             }
         }
@@ -193,41 +208,63 @@ public class Notify {
         return properties;
     }
 
-    private static Map<String, String> getCuratorEmailLookup() throws IOException {
-        File file = new File("resources" + File.separator + EMAIL_LOOKUP_FILE);
-        InputStream is;
-        if (file.exists()) {
-             is = new FileInputStream(file);
-        } else {
-            String msg = "The curator email lookup file was not found: " + file;
-            throw new FileNotFoundException(msg);
-        }
-        BufferedReader br = new BufferedReader(new InputStreamReader(is));
+    private static Map<String, String> getCuratorEmailLookup() throws Exception {
         Map<String, String> map = new HashMap<String, String>();
-        String line;
-        boolean isFirstLine = true;
-        while ((line = br.readLine()) != null) {
-            // The first line is a header.
-            if (isFirstLine) {
-                isFirstLine = false;
-                continue;
+        Consumer<String[]> consumer = new Consumer<String[]>() {
+
+            @Override
+            public void accept(String[] line) {
+                String name = canonicalizeRecipientName(line[1], line[2]);
+                String email = line[3];
+                map.put(name, email);
+                // The first column is the coordinator flag.
+                boolean isCoordinator = Boolean.parseBoolean(line[0]);
+                if (isCoordinator) {
+                    COORDINATOR_NAMES.add(name);
+                    COORDINATOR_EMAILS.add(email);
+                }
             }
-            String[] content = line.split(",");
-            String name = canonicalizeRecipientName(content[1], content[2]);
-            String email = content[3];
-            map.put(name, email);
-            // The first column is the coordinator flag.
-            boolean isCoordinator = Boolean.parseBoolean(content[0]);
-            if (isCoordinator) {
-                COORDINATOR_NAMES.add(name);
-                COORDINATOR_EMAILS.add(email);
-            }
-        }
-        br.close();
-        is.close();
+        
+        };
+        loadCsv(EMAIL_LOOKUP_FILE, consumer);
         
         return map;
-   }
+    }
+
+    private static Map<String, String> getDescriptions() throws Exception {
+        Map<String, String> map = new HashMap<String, String>();
+        Consumer<String[]> consumer = new Consumer<String[]>() {
+
+            @Override
+            public void accept(String[] line) {
+                map.put(line[0], line[1]);
+            }
+            
+        };
+        loadCsv(DESCRIPTIONS_FILE, consumer);
+        
+        return map;
+    }
+
+    /**
+     * Reads and parses the given file in the <code>resources</code>
+     * directory.
+     * 
+     * @param fileName the base name of the file to load
+     * @param consumer the handler for each CSV line
+     * @throws Exception
+     */
+    private static void loadCsv(String fileName, Consumer<String[]> consumer)
+            throws Exception {
+        File file = new File("resources" + File.separator + fileName);
+        FileReader reader = new FileReader(file);
+        CSVReaderHeaderAware parser = new CSVReaderHeaderAware(reader);
+        try {
+            parser.forEach(consumer);
+        } finally {
+            parser.close();
+        }
+    }
 
     private static QAReport getQAReport(File file) throws IOException {
         InputStream is;
@@ -254,7 +291,8 @@ public class Notify {
    }
 
    private static void addNotifications(File rptFile, String title, Map<String, String> emailLookup,
-           String hostPrefix, Map<String, Map<File, File>> notifications) throws Exception {
+           String description, String hostPrefix, Map<String, Map<File, File>> notifications)
+           throws Exception {
        // The QA report.
        QAReport report = getQAReport(rptFile);
        // The column headers.
@@ -374,6 +412,8 @@ public class Notify {
                bw.newLine();
                bw.write("<style>");
                bw.newLine();
+               bw.write("h1 + p { margin-top: 0; }");
+               bw.newLine();
                bw.write("table { border-collapse: collapse; }");
                bw.newLine();
                bw.write("table, th, td { border: 1px solid black; }");
@@ -385,6 +425,14 @@ public class Notify {
                bw.write(effectiveTitle);
                bw.write("</h1>");
                bw.newLine();
+               // Add the description.
+               if (description != null) {
+                   bw.write("<p>");
+                   bw.write(description);
+                   bw.newLine(); 
+                   bw.write("</p>");
+                   bw.newLine();
+               }
                bw.write("<table>");
                bw.newLine();
                bw.write(" ");
@@ -532,6 +580,7 @@ public class Notify {
             // The hyperlink list item.
             String links = formatReportItem(recipient, htmlFile, title, prefix, rptFile);
             // Capture diffs for later.
+            // FIXME - diffs not included in the report.
             if (rptFile.getName().endsWith("_diff.txt")) {
                 diffs.add(links);
             } else {
@@ -585,43 +634,18 @@ public class Notify {
     
     /**
      * Replaces underscores in the report display name portion of the given
-     * file name with spaces. If the display name portion is camelCase, then
-     * each capitalized word is separated by a space.
+     * file name with spaces.
      * 
      * @param fileName the report file name
      * @return the report title
      */
     private static String toReportTitle(String fileName) {
-        String baseName = fileName.split("(_diff)?\\.")[0];
-        // The display names are either camelCase or underscored.
-        if (baseName.contains("_")) {
-            return baseName.replace("_", " ");
-        } else {
-            return splitCamelCase(baseName);
-        }
+        String baseName = toDisplayName(fileName);
+        return baseName.replace("_", " ");
     }
-    
-    /**
-     * Converts a camelCase string to a more legible text.
-     * 
-     * Lifted from a StackOverflow
-     * <a href="https://stackoverflow.com/questions/2559759/how-do-i-convert-camelcase-into-human-readable-names-in-java>
-     * snippet
-     * </a>
-     * 
-     * @param s the input camelCase string
-     * @return the hmanized text
-     */
-    private static String splitCamelCase(String s) {
-        return s.replaceAll(
-                String.format("%s|%s|%s",
-                   "(?<=[A-Z])(?=[A-Z][a-z])",
-                   "(?<=[^A-Z])(?=[A-Z])",
-                   "(?<=[A-Za-z])(?=[^A-Za-z])"
-                ),
-                " "
-             );
-          }
 
+    private static String toDisplayName(String fileName) {
+        return fileName.split("(_diff)?\\.")[0];
+    }
    
 }
