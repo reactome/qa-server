@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Outputs report items that are in the first directory but
 # not the second directory.
