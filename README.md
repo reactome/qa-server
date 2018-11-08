@@ -20,28 +20,33 @@ This content is built as follows:
 
 1. Make a staging area, e.g. `$HOME/reactome/qa/weekly`.
 
-2. Copy the `release-qa` project `src/main/scripts` files to the
+2. Copy the `qa-server` project `src/main/scripts` files to the
    staging area `bin` subdirectory.
 
-3. Export `CuratorTool` as a runnable jar file with main class
+10. Export `CuratorTool` as a runnable jar file with main class
    `org.gk.slicing.SlicingEngine` and VM arugments `-Xmx8G` into
    the staging file `lib/SlicingTool-jar-with-dependencies.jar`.
+   
+   _Note_: do not use the `CuratorTool` ant/SlicingToolBuild.xml
+   for this purpose, since the resulting jar does not include
+   dependent jar files.
 
-4. Export `CuratorTool` as a runnable jar file with main class
-   `org.gk.qualityCheck.CommandLineRunner` into the staging file `lib/CuratorQA-jar-with-dependencies.jar`.
+11. Export `CuratorTool` as a runnable jar file with main class
+   `org.gk.qualityCheck.CommandLineRunner` into the staging file
+   `lib/CuratorQA-jar-with-dependencies.jar`.
 
-5. Build the `release-qa` Maven package and copy the resulting
+20. Build the `release-qa` Maven package and copy the resulting
    `target` jar with dependencies to the staging file
    `lib/ReleaseQA-jar-with-dependencies.jar`. Do not use Eclipse
    to export this runnable jar with embedded dependency jars, since
    executing that runnable jar quietly exits immediately with no
    output.
 
-6. Build the `qa-server` Maven package and copy the resulting
+21. Build the `qa-server` Maven package and copy the resulting
    `target` jar with dependencies to the staging file
    `lib/Notify-jar-with-dependencies.jar`.
 
-7. Copy the relevant configuration files into the staging area.
+22. Copy the relevant configuration files into the staging area.
    The configurations are documented in the respective projects,
    e.g. the `Notify/resources` files are described in `qa-release`
    `src/main/java/org/reactome/release/qa/Notify.java`.
