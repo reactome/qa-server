@@ -120,6 +120,11 @@ if [ -e "$current_rpt_dir" ]; then
 else
     slicing_opts="--slicingDbName $slice_db"
     echo "Running the slicing tool..."
+    # Note: sometimes the slicing tool doesn't succeed but still exits
+    # with return code 1, e.g. if a file is not readable, and leaves
+    # an empty database. This causes downstream errors, e.g. that
+    # the human species is not found. Unfortunately, that has to be
+    # handled on a case-by-case basis.
     (cd $slicing_dir; $ECHO java -Xmx8G -jar $slicing_jar $slicing_opts)
     rc=$?
     if [ "${rc}" -ne 0 ]; then
