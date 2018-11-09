@@ -85,9 +85,7 @@ date_hyphenated=`date $date_opts "+%Y-%m-%d"`
 # The QA report location.
 reports_dir=$qa_check_root/QAReports
 current_rpt_dir="$reports_dir/$date"
-# If the date was specified on the command line,
-# then create the reports directory if necessary.
-# This will cause slicing to be skipped below.
+# Create the reports directory, if necessary.
 if [ ! -e "$current_rpt_dir" ]; then
     if [ -n "$date_arg" ]; then
         mkdir "$current_rpt_dir"
