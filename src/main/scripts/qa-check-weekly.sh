@@ -263,6 +263,7 @@ fi
 # Delete the created dry run report directory, if necessary.
 if $CLEAN; then
     rm -r $current_rpt_dir
+    echo "Removed the reports directory created for the dry run: $current_rpt_dir."
 fi
 
 echo "The $date_hyphenated weekly QA check is completed."
