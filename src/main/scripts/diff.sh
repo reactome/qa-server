@@ -11,10 +11,10 @@ fi
 new_dir=$1
 old_dir=$2
 
-new_files=`find $new_dir -name '*.txt' | grep -v '_diff.txt' | grep -v '.html'`
+new_files=`find $new_dir -name '*.tsv' | grep -v '_diff.tsv' | grep -v '.html'`
 for new_file in $new_files; do
     old_file=`echo $new_file | sed "s,$new_dir,$old_dir,"`
-    diff_file=`echo $new_file | sed "s/\.txt/_diff.txt/"`
+    diff_file=`echo $new_file | sed "s/\.tsv/_diff.tsv/"`
     if [ -e "$old_file" ]; then
         new_hdg=`head -1 $new_file`
         old_hdg=`head -1 $old_file`

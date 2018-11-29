@@ -177,8 +177,8 @@ public class Notify {
         for (File dir : rptsDir.listFiles()) {
             for (File file: dir.listFiles()) {
                 String fileName = file.getName();
-                // Only include .txt files.
-                if (fileName.endsWith(".txt")) {
+                // Only include .tsv files.
+                if (fileName.endsWith(".tsv")) {
                     String title = toReportTitle(fileName);
                     rptTitles.put(fileName, title);
                     String displayName = toDisplayName(fileName);
@@ -581,7 +581,7 @@ public class Notify {
             String links = formatReportItem(recipient, htmlFile, title, prefix, rptFile);
             // Capture diffs for later.
             // FIXME - diffs not included in the report.
-            if (rptFile.getName().endsWith("_diff.txt")) {
+            if (rptFile.getName().endsWith("_diff.tsv")) {
                 diffs.add(links);
             } else {
                 sb.append(links);
@@ -621,7 +621,7 @@ public class Notify {
         sb.append(title);
         sb.append("</a>");
         // Coordinators get a link to the raw CSV file as well.
-        if (!rptFileName.endsWith("_diff.txt") && COORDINATOR_EMAILS.contains(recipient)) {
+        if (!rptFileName.endsWith("_diff.tsv") && COORDINATOR_EMAILS.contains(recipient)) {
             String rptUrl = prefix + rptFileName;
             sb.append(" (<a href='" + rptUrl + "'>");
             sb.append("tsv</a>)");
