@@ -24,6 +24,8 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import javax.mail.Address;
 import javax.mail.Message;
 import javax.mail.Session;
@@ -67,6 +69,22 @@ import com.opencsv.CSVReaderHeaderAware;
  * @author Fred Loney <loneyf@ohsu.edu>
  */
 public class Notify {
+
+    private static final String SUMMARY_TITLE = "QA Report Summary";
+
+    private static final String SUMMARY_NOTIFICATION_FILE_NM = "summary.html";
+
+    // TODO - on QA check refactoring, get the summary constants
+    // below from a common class.
+
+    private static final String SUMMARY_DELIMITER = "\t";
+
+    private static final String SUMMARY_FILE_NM = "summary.tsv";
+
+    /** The summary file headings. */
+    private static final String[] SUMMARY_HDGS = {
+            "Report", "Issue Count"
+    };
 
     private static final String INSTANCE_BROWSER_URL = "cgi-bin/instancebrowser?DB=gk_central&ID=";
 
@@ -173,12 +191,22 @@ public class Notify {
         }
         // The report {file name: heading} map.
         Map<String, String> rptTitles = new HashMap<String, String>();
+        // The summary files.
+        List<File> summaryFiles = new ArrayList<File>();
         // Iterator over each reports subdirectory.
-        for (File dir : rptsDir.listFiles()) {
+        Collection<File> subdirs = Stream.of(rptsDir.listFiles())
+                .filter(File::isDirectory)
+                .collect(Collectors.toList());
+        for (File dir: subdirs) {
             for (File file: dir.listFiles()) {
                 String fileName = file.getName();
                 // Only include .tsv files.
                 if (fileName.endsWith(".tsv")) {
+                    if (SUMMARY_FILE_NM.equals(fileName)) {
+                        // Collect and move on.
+                        summaryFiles.add(file);
+                        continue;
+                    }
                     String title = toReportTitle(fileName);
                     rptTitles.put(fileName, title);
                     String displayName = toDisplayName(fileName);
@@ -188,8 +216,47 @@ public class Notify {
             }
         }
         
+        // Consolidate the summary files.
+        File consolidatedSummaryFile = consolidateSummaries(rptsDir, summaryFiles);
+        
         // Notify the coordinators and modifiers.
-        sendNotifications(notifications, rptTitles, hostPrefix, emailLookup, props, rptsDir);
+        sendNotifications(notifications, rptTitles, consolidatedSummaryFile,
+                hostPrefix, emailLookup, props, rptsDir);
+    }
+
+    protected static File consolidateSummaries(File rptsDir, List<File> summaryFiles)
+            throws IOException {
+        Map<String, Integer> summaryCnts = new HashMap<String, Integer>();
+        for (File summaryFile: summaryFiles) {
+            QAReport report = getQAReport(summaryFile);
+            for (List<String> line: report.lines) {
+                summaryCnts.put(line.get(0), new Integer(line.get(1)));
+            }
+        }
+        List<String> summaryRpts = summaryCnts.keySet().stream()
+                .sorted()
+                .collect(Collectors.toList());
+        List<String> summaryLines = new ArrayList<String>();
+        for (String rpt: summaryRpts) {
+            String title = rpt.replace('_', ' ');
+            Integer itemCnt = summaryCnts.get(rpt);
+            StringBuffer sb = new StringBuffer();
+            sb.append("<tr>");
+            sb.append("<td>");
+            sb.append(title);
+            sb.append("</td>");
+            sb.append("<td>");
+            sb.append(itemCnt);
+            sb.append("</td>");
+            sb.append("</tr>");
+            sb.append(NL);
+            summaryLines.add(sb.toString());
+        }
+        File consolidatedFile = new File(rptsDir, SUMMARY_NOTIFICATION_FILE_NM);
+        List<String> headings = Arrays.asList(SUMMARY_HDGS);
+        writeNotificationFile(consolidatedFile, SUMMARY_TITLE, null, headings, summaryLines);
+        
+        return consolidatedFile;
     }
     
     private static Properties loadProperties() throws IOException {
@@ -275,7 +342,7 @@ public class Notify {
         List<String> headers = null;
         List<List<String>> lines = new ArrayList<List<String>>();
         while ((line = br.readLine()) != null) {
-            String[] content = line.split("\t");
+            String[] content = line.split(SUMMARY_DELIMITER);
             // The first line is a header.
             if (isFirstLine) {
                 isFirstLine = false;
@@ -306,11 +373,6 @@ public class Notify {
                authorIndexes.add(authorNdx);
            }
        }
-       // No author fields => nothing to do.
-       if (authorIndexes.isEmpty()) {
-           return;
-       }
-       
        if (!hostPrefix.endsWith("/")) {
            hostPrefix = hostPrefix + "/";
        }
@@ -374,9 +436,7 @@ public class Notify {
                }
            }
        }
-
-       // The HTML table header.
-       String header = createHTMLTableHeader(report);
+       
        // The reverse curator {email: name} lookup.
        Map<String, String> emailNameMap = new HashMap<String, String>(emailLookup.size());
        for (Entry<String, String> entry: emailLookup.entrySet()) {
@@ -406,51 +466,7 @@ public class Notify {
                effectiveTitle += " New Issues";
            }
            // Write the custom curator file.
-           BufferedWriter bw = new BufferedWriter(new FileWriter(curatorFile));
-           try {
-               bw.write("<html>");
-               bw.newLine();
-               bw.write("<style>");
-               bw.newLine();
-               bw.write("h1 + p { margin-top: 0; }");
-               bw.newLine();
-               bw.write("table { border-collapse: collapse; }");
-               bw.newLine();
-               bw.write("table, th, td { border: 1px solid black; }");
-               bw.newLine();
-               bw.write("</style>");
-               bw.write("<body>");
-               bw.newLine();
-               bw.write("<h1>");
-               bw.write(effectiveTitle);
-               bw.write("</h1>");
-               bw.newLine();
-               // Add the description.
-               if (description != null) {
-                   bw.write("<p>");
-                   bw.write(description);
-                   bw.newLine(); 
-                   bw.write("</p>");
-                   bw.newLine();
-               }
-               bw.write("<table>");
-               bw.newLine();
-               bw.write(" ");
-               bw.write(header);
-               bw.newLine();
-               for (String line: lines) {
-                   bw.write(" ");
-                   bw.write(line);
-                   bw.newLine();
-               }
-               bw.write("</table>");
-               bw.newLine();
-               bw.write("</body>");
-               bw.write("</html>");
-           } finally {
-               bw.flush();  
-               bw.close();  
-           }
+           writeNotificationFile(curatorFile, effectiveTitle, description, report.headers, lines);
            // Add the custom curator file to the
            // {curator: {report file: curator file}} map.
            Map<File, File> curatorNtfs = notifications.get(recipient);
@@ -461,6 +477,56 @@ public class Notify {
            curatorNtfs.put(rptFile, curatorFile);
        }
     }
+
+protected static void writeNotificationFile(File file, String title, String description,
+        List<String> headers, List<String> lines) throws IOException {
+    String header = createHTMLTableHeader(headers);
+    BufferedWriter bw = new BufferedWriter(new FileWriter(file));
+       try {
+           bw.write("<html>");
+           bw.newLine();
+           bw.write("<style>");
+           bw.newLine();
+           bw.write("h1 + p { margin-top: 0; }");
+           bw.newLine();
+           bw.write("table { border-collapse: collapse; }");
+           bw.newLine();
+           bw.write("table, th, td { border: 1px solid black; }");
+           bw.newLine();
+           bw.write("</style>");
+           bw.write("<body>");
+           bw.newLine();
+           bw.write("<h1>");
+           bw.write(title);
+           bw.write("</h1>");
+           bw.newLine();
+           // Add the description.
+           if (description != null) {
+               bw.write("<p>");
+               bw.write(description);
+               bw.newLine(); 
+               bw.write("</p>");
+               bw.newLine();
+           }
+           bw.write("<table>");
+           bw.newLine();
+           bw.write(" ");
+           bw.write(header);
+           bw.newLine();
+           for (String line: lines) {
+               bw.write(" ");
+               bw.write(line);
+               bw.newLine();
+           }
+           bw.write("</table>");
+           bw.newLine();
+           bw.write("</body>");
+           bw.write("</html>");
+       } finally {
+           bw.flush();  
+           bw.close();  
+       }
+}
 
     private static int getDbIdColumnIndex(QAReport report) {
         for (String dbHdr: DB_ID_HEADERS) {
@@ -488,10 +554,10 @@ public class Notify {
         return last + "," + initial;
     }
 
-    private static String createHTMLTableHeader(QAReport report) {
+    protected static String createHTMLTableHeader(List<String> headers) {
         StringBuffer sb = new StringBuffer();
         sb.append("<tr>");
-        for (String hdr: report.headers) {
+        for (String hdr: headers) {
             sb.append("<th>");
             sb.append(hdr);
             sb.append("</th>");
@@ -526,20 +592,20 @@ public class Notify {
     }
 
     private static void sendNotifications(Map<String, Map<File, File>> notifications,
-            Map<String, String> rptTitles, String hostPrefix, Map<String, String> emailLookup,
-            Properties props, File rptsDir) throws Exception {
+            Map<String, String> rptTitles, File summaryFile, String hostPrefix,
+            Map<String, String> emailLookup, Properties props, File rptsDir) throws Exception {
         if (!hostPrefix.endsWith("/")) {
             hostPrefix = hostPrefix + "/";
         }
         String dirUrl = hostPrefix + "QAReports/" + rptsDir.getName();
         for (Entry<String, Map<File, File>> ntf: notifications.entrySet()) {
             String recipient = ntf.getKey();
-            notify(recipient, dirUrl, props, rptTitles, ntf.getValue());
+            notify(recipient, dirUrl, props, rptTitles, summaryFile, ntf.getValue());
         }
     }
     
     private static void notify(String recipient, String dirUrl, Properties properties,
-            Map<String, String> rptTitles, Map<File, File> rptHtmlMap) throws Exception {
+            Map<String, String> rptTitles, File summaryFile, Map<File, File> rptHtmlMap) throws Exception {
         Session session = Session.getDefaultInstance(properties);
         MimeMessage message = new MimeMessage(session);
         
@@ -567,6 +633,24 @@ public class Notify {
         // The diff email hyperlink items are captured in a separate group.
         List<String> diffs = new ArrayList<String>();
         // The full QA report hyperlinks.
+        sb.append("<h2>");
+        sb.append("Reports:");
+        sb.append("</h2>");
+        sb.append(NL);
+        if (COORDINATOR_EMAILS.contains(recipient)) {
+            // Add the summary hyperlink.
+            sb.append("<h3>");
+            sb.append("<a href='" + dirUrl + "/" + summaryFile.getName() + "'>");
+            sb.append("Summary");
+            sb.append("</a>");
+            sb.append("</h3>");
+            sb.append(NL);
+            // Distinguish the detail section.
+            sb.append("<h3>");
+            sb.append("Detail");
+            sb.append("</h3>");
+            sb.append(NL);
+        }
         sb.append("<ul>");
         for (File rptFile: rptFiles) {
             // The QA reports subdirectory.
@@ -580,7 +664,6 @@ public class Notify {
             // The hyperlink list item.
             String links = formatReportItem(recipient, htmlFile, title, prefix, rptFile);
             // Capture diffs for later.
-            // FIXME - diffs not included in the report.
             if (rptFile.getName().endsWith("_diff.tsv")) {
                 diffs.add(links);
             } else {
@@ -591,7 +674,6 @@ public class Notify {
         sb.append(NL);
         // The diff email QA report hyperlinks.
         if (!diffs.isEmpty()) {
-            sb.append("<br/>");
             sb.append("<h2>");
             sb.append("New issues:");
             sb.append("</h2>");
