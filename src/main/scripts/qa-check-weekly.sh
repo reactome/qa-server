@@ -86,7 +86,12 @@ date_hyphenated=`date $date_opts "+%Y-%m-%d"`
 reports_dir=$qa_check_root/QAReports
 current_rpt_dir="$reports_dir/$date"
 # Create the reports directory, if necessary.
-if [ ! -e "$current_rpt_dir" ]; then
+if [ -e "$current_rpt_dir" ]; then
+    # If this is a rerun, then clear the existing report directory.
+    if [  -n "date_arg" ] && ! $DRY_RUN; then
+        rm -rf "$current_rpt_dir"/*
+    fi
+else
     if [ -n "$date_arg" ]; then
         mkdir "$current_rpt_dir"
         echo "Created the reports directory: $current_rpt_dir."
