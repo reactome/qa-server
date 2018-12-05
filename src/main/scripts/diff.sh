@@ -11,7 +11,7 @@ fi
 new_dir=$1
 old_dir=$2
 
-new_files=`find $new_dir -name '*.tsv' | grep -v '_diff.tsv' | grep -v '.html'`
+new_files=`find $new_dir -name '*.tsv' | grep -Ev '((summary|_diff).tsv|.html)$'`
 for new_file in $new_files; do
     old_file=`echo $new_file | sed "s,$new_dir,$old_dir,"`
     diff_file=`echo $new_file | sed "s/\.tsv/_diff.tsv/"`
