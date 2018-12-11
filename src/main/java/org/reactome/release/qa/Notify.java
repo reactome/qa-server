@@ -36,7 +36,12 @@ import javax.mail.internet.MimeMessage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.opencsv.CSVParser;
+import com.opencsv.CSVParserBuilder;
+import com.opencsv.CSVReader;
+import com.opencsv.CSVReaderBuilder;
 import com.opencsv.CSVReaderHeaderAware;
+import com.opencsv.CSVReaderHeaderAwareBuilder;
 
 /**
  * Notifies the responsible curators of automated QA reports.
@@ -96,7 +101,7 @@ public class Notify {
     
     private static final String MAIL_CONFIG_FILE = "mail.properties";
     
-    private static final String DESCRIPTIONS_FILE = "descriptions.csv";
+    private static final String DESCRIPTIONS_FILE = "descriptions.tsv";
     
     // The release coordinators.
     private static final Collection<String> COORDINATOR_NAMES =
@@ -317,19 +322,29 @@ public class Notify {
      * Reads and parses the given file in the <code>resources</code>
      * directory.
      * 
+     * If the file extension is <code>.csv</code>, then the file
+     * is read as a comma-separated CSV file. Otherwise, the file
+     * is assumed to be tab-separated.
+     * 
      * @param fileName the base name of the file to load
-     * @param consumer the handler for each CSV line
+     * @param consumer the handler for each file input line
      * @throws Exception
      */
     private static void loadCsv(String fileName, Consumer<String[]> consumer)
             throws Exception {
         File file = new File("resources" + File.separator + fileName);
-        FileReader reader = new FileReader(file);
-        CSVReaderHeaderAware parser = new CSVReaderHeaderAware(reader);
+        Character separator = fileName.endsWith(".csv") ?  ',' : '\t';
+        CSVParser parser = new CSVParserBuilder()
+                .withSeparator(separator)
+                .build();
+       FileReader fileRdr = new FileReader(file);
+       CSVReader reader = new CSVReaderHeaderAwareBuilder(fileRdr)
+                .withCSVParser(parser)
+                .build();
         try {
-            parser.forEach(consumer);
+            reader.forEach(consumer);
         } finally {
-            parser.close();
+            reader.close();
         }
     }
 
@@ -632,11 +647,6 @@ protected static void writeNotificationFile(File file, String title, String desc
                 .sorted(compare).collect(Collectors.toList());
         // The diff email hyperlink items are captured in a separate group.
         List<String> diffs = new ArrayList<String>();
-        // The full QA report hyperlinks.
-        sb.append("<h2>");
-        sb.append("Reports:");
-        sb.append("</h2>");
-        sb.append(NL);
         if (COORDINATOR_EMAILS.contains(recipient)) {
             // Add the summary hyperlink.
             sb.append("<h3>");
@@ -645,12 +655,11 @@ protected static void writeNotificationFile(File file, String title, String desc
             sb.append("</a>");
             sb.append("</h3>");
             sb.append(NL);
-            // Distinguish the detail section.
-            sb.append("<h3>");
-            sb.append("Detail");
-            sb.append("</h3>");
-            sb.append(NL);
         }
+        sb.append("<h3>");
+        sb.append("Detail");
+        sb.append("</h3>");
+        sb.append(NL);
         sb.append("<ul>");
         for (File rptFile: rptFiles) {
             // The QA reports subdirectory.
@@ -674,9 +683,9 @@ protected static void writeNotificationFile(File file, String title, String desc
         sb.append(NL);
         // The diff email QA report hyperlinks.
         if (!diffs.isEmpty()) {
-            sb.append("<h2>");
-            sb.append("New issues:");
-            sb.append("</h2>");
+            sb.append("<h3>");
+            sb.append("New issues");
+            sb.append("</h3>");
             sb.append(NL);
             sb.append("<ul>");
             for (String diff: diffs) {
