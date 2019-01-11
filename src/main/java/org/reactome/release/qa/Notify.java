@@ -39,8 +39,6 @@ import org.apache.logging.log4j.Logger;
 import com.opencsv.CSVParser;
 import com.opencsv.CSVParserBuilder;
 import com.opencsv.CSVReader;
-import com.opencsv.CSVReaderBuilder;
-import com.opencsv.CSVReaderHeaderAware;
 import com.opencsv.CSVReaderHeaderAwareBuilder;
 
 /**
@@ -75,6 +73,10 @@ import com.opencsv.CSVReaderHeaderAwareBuilder;
  */
 public class Notify {
 
+    private static final String DEF_PRIORITY = "Medium";
+
+    private static final String DB_NAME_PREFIX = "test_slice_";
+
     private static final String SUMMARY_TITLE = "QA Report Summary";
 
     private static final String SUMMARY_NOTIFICATION_FILE_NM = "summary.html";
@@ -97,7 +99,7 @@ public class Notify {
 
     private static final String PROTOCOL = "http";
 
-    private static final String EMAIL_LOOKUP_FILE = "curators.csv";
+    private static final String CURATORS_FILE = "curators.csv";
     
     private static final String MAIL_CONFIG_FILE = "mail.properties";
     
@@ -115,8 +117,10 @@ public class Notify {
     private static final String NONCOORDINATOR_PRELUDE =
             "You are listed as the most recent author in the following automated QA reports:";
 
-    // The last author columns have variant spellings.
+    // The author is in the most recent modification column, which
+    // has variant spellings.
     private static final String[] AUTHOR_HEADERS = {
+            "Modified",
             "MostRecentAuthor",
             "LastAuthor"
     };
@@ -165,14 +169,25 @@ public class Notify {
             System.exit(1);
         }
         
-        // The {curator:email} lookup map.
-        Map<String, String> descriptions = null;
+        // The {QA check: [description, priority]} lookup map.
+        Map<String, List<String>> qaInfo = null;
         try {
-            descriptions = getDescriptions();
+            qaInfo = getDescriptions();
         } catch (Exception e) {
             System.err.println("Could not read the descriptions file: ");
             System.err.println(e);
             System.exit(1);
+        }
+        // Split into separate description and priorit lookup maps.
+        Map<String, String> descriptions = new HashMap<String, String>();
+        Map<String, String> priorities = new HashMap<String, String>();
+        if (qaInfo != null) {
+            for (Entry<String, List<String>> entry: qaInfo.entrySet()) {
+                String key = entry.getKey();
+                List<String> info = entry.getValue();
+                descriptions.put(key, info.get(0));
+                priorities.put(key, info.get(1));
+            }
         }
         
         // The {recipient: {report file: html file}} map.
@@ -194,6 +209,10 @@ public class Notify {
             System.err.println("Reports directory not found: " + rptsDir);
             System.exit(1);
         }
+        // The database name.
+        String dbNameSuffix = rptsDir.getName();
+        String dbName = DB_NAME_PREFIX + dbNameSuffix;
+
         // The report {file name: heading} map.
         Map<String, String> rptTitles = new HashMap<String, String>();
         // The summary files.
@@ -216,7 +235,12 @@ public class Notify {
                     rptTitles.put(fileName, title);
                     String displayName = toDisplayName(fileName);
                     String description = descriptions.get(displayName);
-                    addNotifications(file, title, emailLookup, description, hostPrefix, notifications);
+                    String priority = priorities.get(displayName);
+                    if (priority == null) {
+                        priority = DEF_PRIORITY;
+                    }
+                    addNotifications(file, title, emailLookup, description,
+                            priority, hostPrefix, dbName, notifications);
                 }
             }
         }
@@ -259,7 +283,8 @@ public class Notify {
         }
         File consolidatedFile = new File(rptsDir, SUMMARY_NOTIFICATION_FILE_NM);
         List<String> headings = Arrays.asList(SUMMARY_HDGS);
-        writeNotificationFile(consolidatedFile, SUMMARY_TITLE, null, headings, summaryLines);
+        String dbName = DB_NAME_PREFIX + rptsDir.getName();
+        writeNotificationFile(consolidatedFile, SUMMARY_TITLE, null, null, dbName, headings, summaryLines);
         
         return consolidatedFile;
     }
@@ -298,18 +323,19 @@ public class Notify {
             }
         
         };
-        loadCsv(EMAIL_LOOKUP_FILE, consumer);
+        loadCsv(CURATORS_FILE, consumer);
         
         return map;
     }
 
-    private static Map<String, String> getDescriptions() throws Exception {
-        Map<String, String> map = new HashMap<String, String>();
+    private static Map<String, List<String>> getDescriptions() throws Exception {
+        Map<String, List<String>> map = new HashMap<String, List<String>>();
         Consumer<String[]> consumer = new Consumer<String[]>() {
 
             @Override
             public void accept(String[] line) {
-                map.put(line[0], line[1]);
+                List<String> rest = Arrays.asList(line[1]).subList(1, line.length);
+                map.put(line[0], rest);
             }
             
         };
@@ -370,178 +396,198 @@ public class Notify {
         is.close();
         
         return new QAReport(headers, lines);
-   }
-
-   private static void addNotifications(File rptFile, String title, Map<String, String> emailLookup,
-           String description, String hostPrefix, Map<String, Map<File, File>> notifications)
-           throws Exception {
-       // The QA report.
-       QAReport report = getQAReport(rptFile);
-       // The column headers.
-       List<String> headers = report.headers;
-       // The author headers begin with one of the author headers,
-       // e.g. MostRecentAuthor_1 is an author header.
-       List<Integer> authorIndexes = new ArrayList<Integer>();
-       for (String hdr : AUTHOR_HEADERS) {
-           int authorNdx = headers.indexOf(hdr);
-           if (authorNdx != -1) {
-               authorIndexes.add(authorNdx);
-           }
-       }
-       if (!hostPrefix.endsWith("/")) {
-           hostPrefix = hostPrefix + "/";
-       }
-       // The {curator: lines} map.
-       Map<String, List<String>> linesMap = new HashMap<String, List<String>>();
-       // Coordinators are notified of every file.
-       for (String coordinator: COORDINATOR_EMAILS) {
-           linesMap.put(coordinator, new ArrayList<String>());
-       }
-       // The DB ID column indexes match the pattern /.*DB_?ID/.
-       int dbIdNdx = getDbIdColumnIndex(report);
-       // The DB ID link URL prefix.
-       String instUrlPrefix = hostPrefix + INSTANCE_BROWSER_URL;
-       // Apportion report lines to the curators.       
-       for (List<String> line: report.lines) {
-           Set<String> authors = new HashSet<String>();
-           for (int authorNdx: authorIndexes) {
-               if (authorNdx >= line.size()) {
-                   continue;
-               }
-               String author = line.get(authorNdx);
-               if (author != null) {
-                   authors.add(author);
-               }
-           }
-
-           // Convert the report line to HTML.
-           String html = createHTMLTableRow(line, dbIdNdx, instUrlPrefix);
-
-           // Coordinators get every line.
-           for (String coordinator: COORDINATOR_EMAILS) {
-               List<String> lines = linesMap.get(coordinator);
-               lines.add(html);
-           }
-
-           // Convert the author string on the report to the standardized
-           // last,initial format for matching against the curators.
-           for (String author: authors) {
-               // The author field format pseudo-regex is:
-               //   /last, *first|initial(, *date)?/
-               String[] authorFields = author.split(", *");
-               if (authorFields.length > 1) {
-                   String last = authorFields[0];
-                   String firstOrInitial = authorFields[1];
-                   String canonicalAuthor = canonicalizeRecipientName(last, firstOrInitial);
-                   // A coordinator might be an author, but already
-                   // has the lines.
-                   if (COORDINATOR_NAMES.contains(canonicalAuthor)) {
-                       continue;
-                   }
-                   // The email address.
-                   String recipient = emailLookup.get(canonicalAuthor);
-                   if (recipient != null) {
-                       List<String> lines = linesMap.get(recipient);
-                       if (lines == null) {
-                           lines = new ArrayList<String>();
-                           linesMap.put(recipient, lines);
-                       }
-                       lines.add(html);
-                   }
-               }
-           }
-       }
-       
-       // The reverse curator {email: name} lookup.
-       Map<String, String> emailNameMap = new HashMap<String, String>(emailLookup.size());
-       for (Entry<String, String> entry: emailLookup.entrySet()) {
-           String name = entry.getKey();
-           String address = entry.getValue();
-           if (!emailNameMap.containsKey(address)) {
-               emailNameMap.put(address, name);
-           }
-       }
-
-       // Make the curator-specific HTML files.
-       for (Entry<String, List<String>> entry: linesMap.entrySet()) {
-           String recipient = entry.getKey();
-           List<String> lines = entry.getValue();
-           File dir = rptFile.getParentFile();
-           String fileName = rptFile.getName();
-           // The report file base name before the extension.
-           String prefix = fileName.split("\\.")[0];
-           // Make the custom curator file name.
-           String name = emailNameMap.get(recipient);
-           String suffix = name.replaceAll("[^\\w]", "").toLowerCase();
-           String base = prefix + "_" + suffix;
-           String curatorFileName = base + ".html";
-           File curatorFile = new File(dir, curatorFileName);
-           String effectiveTitle = title;
-           if (prefix.endsWith("_diff")) {
-               effectiveTitle += " New Issues";
-           }
-           // Write the custom curator file.
-           writeNotificationFile(curatorFile, effectiveTitle, description, report.headers, lines);
-           // Add the custom curator file to the
-           // {curator: {report file: curator file}} map.
-           Map<File, File> curatorNtfs = notifications.get(recipient);
-           if (curatorNtfs == null) {
-               curatorNtfs = new HashMap<File, File>();
-               notifications.put(recipient, curatorNtfs);
-           }
-           curatorNtfs.put(rptFile, curatorFile);
-       }
     }
 
-protected static void writeNotificationFile(File file, String title, String description,
-        List<String> headers, List<String> lines) throws IOException {
-    String header = createHTMLTableHeader(headers);
-    BufferedWriter bw = new BufferedWriter(new FileWriter(file));
-       try {
-           bw.write("<html>");
-           bw.newLine();
-           bw.write("<style>");
-           bw.newLine();
-           bw.write("h1 + p { margin-top: 0; }");
-           bw.newLine();
-           bw.write("table { border-collapse: collapse; }");
-           bw.newLine();
-           bw.write("table, th, td { border: 1px solid black; }");
-           bw.newLine();
-           bw.write("</style>");
-           bw.write("<body>");
-           bw.newLine();
-           bw.write("<h1>");
-           bw.write(title);
-           bw.write("</h1>");
-           bw.newLine();
-           // Add the description.
-           if (description != null) {
-               bw.write("<p>");
-               bw.write(description);
-               bw.newLine(); 
-               bw.write("</p>");
-               bw.newLine();
-           }
-           bw.write("<table>");
-           bw.newLine();
-           bw.write(" ");
-           bw.write(header);
-           bw.newLine();
-           for (String line: lines) {
-               bw.write(" ");
-               bw.write(line);
-               bw.newLine();
-           }
-           bw.write("</table>");
-           bw.newLine();
-           bw.write("</body>");
-           bw.write("</html>");
-       } finally {
-           bw.flush();  
-           bw.close();  
-       }
-}
+    private static void addNotifications(File rptFile, String title, Map<String, String> emailLookup,
+            String description, String priority, String hostPrefix, String dbName, Map<String, Map<File, File>> notifications)
+                    throws Exception {
+        // The QA report.
+        QAReport report = getQAReport(rptFile);
+        // The column headers.
+        List<String> headers = report.headers;
+        // The author headers begin with one of the author headers,
+        // e.g. MostRecentAuthor_1 is an author header.
+        List<Integer> authorIndexes = new ArrayList<Integer>();
+        for (String hdr : AUTHOR_HEADERS) {
+            int authorNdx = headers.indexOf(hdr);
+            if (authorNdx != -1) {
+                authorIndexes.add(authorNdx);
+            }
+        }
+        if (!hostPrefix.endsWith("/")) {
+            hostPrefix = hostPrefix + "/";
+        }
+        // The {curator: lines} map.
+        Map<String, List<String>> linesMap = new HashMap<String, List<String>>();
+        // Coordinators are notified of every file.
+        for (String coordinator: COORDINATOR_EMAILS) {
+            linesMap.put(coordinator, new ArrayList<String>());
+        }
+        // The DB ID column indexes match the pattern /.*DB_?ID/.
+        int dbIdNdx = getDbIdColumnIndex(report);
+        // The DB ID link URL prefix.
+        String instUrlPrefix = hostPrefix + INSTANCE_BROWSER_URL;
+        // Apportion report lines to the curators.       
+        for (List<String> line: report.lines) {
+            Set<String> authors = new HashSet<String>();
+            for (int authorNdx: authorIndexes) {
+                if (authorNdx >= line.size()) {
+                    continue;
+                }
+                String author = line.get(authorNdx);
+                if (author != null) {
+                    authors.add(author);
+                }
+            }
+
+            // Convert the report line to HTML.
+            String html = createHTMLTableRow(line, dbIdNdx, instUrlPrefix);
+
+            // Coordinators get every line.
+            for (String coordinator: COORDINATOR_EMAILS) {
+                List<String> lines = linesMap.get(coordinator);
+                lines.add(html);
+            }
+
+            // Convert the author string on the report to the standardized
+            // last,initial format for matching against the curators.
+            for (String author: authors) {
+                // The author field format pseudo-regex is:
+                //   /last, *first|initial(, *date)?/
+                String[] authorFields = author.split(", *");
+                if (authorFields.length > 1) {
+                    String last = authorFields[0];
+                    String firstOrInitial = authorFields[1];
+                    String canonicalAuthor = canonicalizeRecipientName(last, firstOrInitial);
+                    // A coordinator might be an author, but already
+                    // has the lines.
+                    if (COORDINATOR_NAMES.contains(canonicalAuthor)) {
+                        continue;
+                    }
+                    // The email address.
+                    String recipient = emailLookup.get(canonicalAuthor);
+                    if (recipient != null) {
+                        List<String> lines = linesMap.get(recipient);
+                        if (lines == null) {
+                            lines = new ArrayList<String>();
+                            linesMap.put(recipient, lines);
+                        }
+                        lines.add(html);
+                    }
+                }
+            }
+        }
+
+        // The reverse curator {email: name} lookup.
+        Map<String, String> emailNameMap = new HashMap<String, String>(emailLookup.size());
+        for (Entry<String, String> entry: emailLookup.entrySet()) {
+            String name = entry.getKey();
+            String address = entry.getValue();
+            if (!emailNameMap.containsKey(address)) {
+                emailNameMap.put(address, name);
+            }
+        }
+
+        // Make the curator-specific HTML files.
+        for (Entry<String, List<String>> entry: linesMap.entrySet()) {
+            String recipient = entry.getKey();
+            List<String> lines = entry.getValue();
+            File dir = rptFile.getParentFile();
+            String fileName = rptFile.getName();
+            // The report file base name before the extension.
+            String prefix = fileName.split("\\.")[0];
+            // Make the custom curator file name.
+            String name = emailNameMap.get(recipient);
+            String suffix = name.replaceAll("[^\\w]", "").toLowerCase();
+            String base = prefix + "_" + suffix;
+            String curatorFileName = base + ".html";
+            File curatorFile = new File(dir, curatorFileName);
+            String effectiveTitle = title;
+            if (prefix.endsWith("_diff")) {
+                effectiveTitle += " New Issues";
+            }
+            // Write the custom curator file.
+            writeNotificationFile(curatorFile, effectiveTitle, description, priority, dbName, report.headers, lines);
+            // Add the custom curator file to the
+            // {curator: {report file: curator file}} map.
+            Map<File, File> curatorNtfs = notifications.get(recipient);
+            if (curatorNtfs == null) {
+                curatorNtfs = new HashMap<File, File>();
+                notifications.put(recipient, curatorNtfs);
+            }
+            curatorNtfs.put(rptFile, curatorFile);
+        }
+    }
+
+    private static void writeNotificationFile(File file, String title, String description,
+            String priority, String dbName, List<String> headers, List<String> lines) throws IOException {
+        String header = createHTMLTableHeader(headers);
+        BufferedWriter bw = new BufferedWriter(new FileWriter(file));
+        try {
+            bw.write("<html>");
+            bw.newLine();
+            bw.write("<style>");
+            bw.newLine();
+            bw.write("h1 + p { margin-top: 0; }");
+            bw.newLine();
+            bw.write("table { border-collapse: collapse; }");
+            bw.newLine();
+            bw.write("table, th, td { border: 1px solid black; }");
+            bw.newLine();
+            bw.write("hr { margin-top: 1em; }");
+            bw.newLine();
+            bw.write("</style>");
+            bw.write("<body>");
+            bw.newLine();
+            bw.write("<h1>");
+            bw.write(title);
+            bw.write("</h1>");
+            bw.newLine();
+            // Add the description.
+            if (description != null) {
+                bw.write("<p>");
+                bw.write(description);
+                bw.newLine();
+                bw.write("</p>");
+                bw.newLine();
+            }
+            // Add the priority.
+            if (description != null) {
+                bw.write("<p>");
+                bw.write("Priority: ");
+                bw.write(priority);
+                bw.newLine();
+                bw.write("</p>");
+                bw.newLine();
+            }
+            // The issues.
+            bw.write("<table>");
+            bw.newLine();
+            bw.write(" ");
+            bw.write(header);
+            bw.newLine();
+            for (String line: lines) {
+                bw.write(" ");
+                bw.write(line);
+                bw.newLine();
+            }
+            bw.write("</table>");
+            // Separate the table from the afterword with a line.
+            bw.write("<hr/>");
+            bw.newLine();
+            // The afterword shows the database name.
+            bw.write("<p>");
+            bw.write("QA check trial slice database name: ");
+            bw.write(dbName);
+            bw.write("</p>");
+            bw.newLine();
+            bw.write("</body>");
+            bw.write("</html>");
+        } finally {
+            bw.flush();  
+            bw.close();  
+        }
+    }
 
     private static int getDbIdColumnIndex(QAReport report) {
         for (String dbHdr: DB_ID_HEADERS) {
@@ -663,7 +709,7 @@ protected static void writeNotificationFile(File file, String title, String desc
         sb.append("<ul>");
         for (File rptFile: rptFiles) {
             // The QA reports subdirectory.
-            String dir = rptFile.getParentFile().getName(); 
+            String dir = rptFile.getParentFile().getName();
             // The report URL prefix.
             String prefix = dirUrl + dir + "/";
             // The HTML file corresponding to the report file.
