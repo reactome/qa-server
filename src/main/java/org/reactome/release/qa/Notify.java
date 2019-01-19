@@ -10,7 +10,9 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.StringWriter;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -42,32 +44,49 @@ import com.opencsv.CSVReader;
 import com.opencsv.CSVReaderHeaderAwareBuilder;
 
 /**
- * Notifies the responsible curators of automated QA reports.
+ * Formats the automated QA reports as HTML and notifies the
+ * responsible curators. The report is tailored for each curator
+ * and consists of issues for which that curator is detected as
+ * the best recipient. Each report includes a brief description,
+ * priority, the list of issues and the slice database name from
+ * which it is generated.
  * 
- * Note: notification requires two configuration files in the working directory:
+ * The priority indicates how critical the issues are for the
+ * coming release, as follows:
  * <ul>
+ * <li><code>Blocker</code> issues must be fixed in time for the final slice
+ *     (otherwise something in the release process will break).</li>
+ * <li><code>High</code> issues are expected to be resolved in time for the
+ *     final slice although nothing will break if it is not.</li>
+ * <li><code>Medium</code> issues should be looked into as time allows.</li> 
+ * </ul>
+ * 
+ * <em>Note</em>: notification requires three configuration files in the
+ * <code>resources</code> subdirectory:
+ * <ul>
+ * <li><code>descriptions.tsv</code> - the QA check priorities and
+ *     descriptions</li>
  * <li><code>curators.csv</code> - the list of potential curators</li>
  * <li><code>mail.properties</code> - the JavaMail properties</li>
  * </ul>
- * <p>
+ * 
+ * <code>descriptions.tsv</code> has columns Display Name, Priority
+ * and Description. <em>Display Name</em> must match the corresponding
+ * report class's displayName.
+ * 
  * <code>curators.csv</code> has columns Coordinator, Surname, First Name
  * and Email. <em>Coordinator</em> is the release coordinator flag. Each
  * coordinator is notified of all QA reports. Non-coordinators are notified
  * of only those reports where they are listed as the last modifier.
- * </p>
- * <p>
+ * 
  * <code>mail.properties</code> is the JavaMail properties. The following
  * properties are recommended:
  * <ul>
- * <li><code>mail.from</code> - the required mail sender
+ * <li><code>mail.from</code> - the required mail sender</li>
  * <li><code>mail.smtp.host</code> - the optional mail host name
- *     (default <code>localhost</code>)
- * </li>
+ *     (default <code>localhost</code>)</li>
  * <li><code>mail.smtp.port</code> - the optional mail port (default 25)</li>
  * </ul>
- * </li>
- * </ul>
- * </p>
  * 
  * @author Fred Loney <loneyf@ohsu.edu>
  */
@@ -175,8 +194,7 @@ public class Notify {
             qaInfo = getDescriptions();
         } catch (Exception e) {
             System.err.println("Could not read the descriptions file: ");
-            System.err.println(e);
-            System.exit(1);
+            throw e;
         }
         // Split into separate description and priorit lookup maps.
         Map<String, String> descriptions = new HashMap<String, String>();
@@ -185,8 +203,8 @@ public class Notify {
             for (Entry<String, List<String>> entry: qaInfo.entrySet()) {
                 String key = entry.getKey();
                 List<String> info = entry.getValue();
-                descriptions.put(key, info.get(0));
-                priorities.put(key, info.get(1));
+                priorities.put(key, info.get(0));
+                descriptions.put(key, info.get(1));
             }
         }
         
@@ -200,7 +218,7 @@ public class Notify {
         }
         
         // The prefix to prepend to URLs.
-        String host = InetAddress.getLocalHost().getCanonicalHostName();
+        String host = getHost();
         String hostPrefix = PROTOCOL + "://" + host;
 
         // The QA reports directory.
@@ -251,6 +269,10 @@ public class Notify {
         // Notify the coordinators and modifiers.
         sendNotifications(notifications, rptTitles, consolidatedSummaryFile,
                 hostPrefix, emailLookup, props, rptsDir);
+    }
+
+    private static String getHost() throws UnknownHostException {
+        return InetAddress.getLocalHost().getCanonicalHostName();
     }
 
     protected static File consolidateSummaries(File rptsDir, List<File> summaryFiles)
@@ -334,7 +356,7 @@ public class Notify {
 
             @Override
             public void accept(String[] line) {
-                List<String> rest = Arrays.asList(line[1]).subList(1, line.length);
+                List<String> rest = Arrays.asList(line).subList(1, line.length);
                 map.put(line[0], rest);
             }
             
@@ -363,14 +385,16 @@ public class Notify {
         CSVParser parser = new CSVParserBuilder()
                 .withSeparator(separator)
                 .build();
-       FileReader fileRdr = new FileReader(file);
-       CSVReader reader = new CSVReaderHeaderAwareBuilder(fileRdr)
+        FileReader fileReader = new FileReader(file);
+        // Read the file.
+        CSVReader csvReader = new CSVReaderHeaderAwareBuilder(fileReader)
                 .withCSVParser(parser)
                 .build();
         try {
-            reader.forEach(consumer);
+            csvReader.forEach(consumer);
         } finally {
-            reader.close();
+            csvReader.close();
+            fileReader.close();
         }
     }
 
@@ -526,17 +550,7 @@ public class Notify {
         try {
             bw.write("<html>");
             bw.newLine();
-            bw.write("<style>");
-            bw.newLine();
-            bw.write("h1 + p { margin-top: 0; }");
-            bw.newLine();
-            bw.write("table { border-collapse: collapse; }");
-            bw.newLine();
-            bw.write("table, th, td { border: 1px solid black; }");
-            bw.newLine();
-            bw.write("hr { margin-top: 1em; }");
-            bw.newLine();
-            bw.write("</style>");
+            bw.write(formatStyle());
             bw.write("<body>");
             bw.newLine();
             bw.write("<h1>");
@@ -546,16 +560,20 @@ public class Notify {
             // Add the description.
             if (description != null) {
                 bw.write("<p>");
+                bw.newLine();
                 bw.write(description);
                 bw.newLine();
                 bw.write("</p>");
                 bw.newLine();
             }
             // Add the priority.
-            if (description != null) {
+            if (priority != null) {
                 bw.write("<p>");
+                bw.newLine();
                 bw.write("Priority: ");
+                bw.write("<span class=" + priority + ">");
                 bw.write(priority);
+                bw.write("</span>");
                 bw.newLine();
                 bw.write("</p>");
                 bw.newLine();
@@ -589,6 +607,31 @@ public class Notify {
         }
     }
 
+    private static String formatStyle() throws IOException {
+        StringWriter sw = new StringWriter();
+        BufferedWriter bw = new BufferedWriter(sw);
+        bw.write("<style>");
+        bw.newLine();
+        bw.write("h1 + p { margin-top: 0; }");
+        bw.newLine();
+        bw.write("table { border-collapse: collapse; }");
+        bw.newLine();
+        bw.write("table, th, td { border: 1px solid black; }");
+        bw.newLine();
+        bw.write("hr { margin-top: 1em; }");
+        bw.newLine();
+        bw.write("span.Blocker { color: Crimson; }");
+        bw.newLine();
+        bw.write("span.High { color: DarkOrange; }");
+        bw.newLine();
+        bw.write("span.Medium { color: Blue; }");
+        bw.newLine();
+        bw.write("</style>");
+        bw.flush();
+        
+        return sw.toString();
+    }
+
     private static int getDbIdColumnIndex(QAReport report) {
         for (String dbHdr: DB_ID_HEADERS) {
             for (int i = 0; i < report.headers.size(); i++) {
@@ -615,7 +658,7 @@ public class Notify {
         return last + "," + initial;
     }
 
-    protected static String createHTMLTableHeader(List<String> headers) {
+    private static String createHTMLTableHeader(List<String> headers) {
         StringBuffer sb = new StringBuffer();
         sb.append("<tr>");
         for (String hdr: headers) {
