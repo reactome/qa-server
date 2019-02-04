@@ -597,6 +597,9 @@ public class Notify {
             bw.write("<p>");
             bw.write("QA check trial slice database name: ");
             bw.write(dbName);
+            bw.write(" on ");
+            InetAddress ip = InetAddress.getLocalHost();
+            bw.write(ip.getHostName());
             bw.write("</p>");
             bw.newLine();
             bw.write("</body>");
