@@ -109,7 +109,7 @@ public class Notify {
 
     /** The summary file headings. */
     private static final String[] SUMMARY_HDGS = {
-            "Report", "Issue Count"
+            "Report", "Priority", "Issue Count"
     };
 
     private static final String INSTANCE_BROWSER_URL = "cgi-bin/instancebrowser?DB=gk_central&ID=";
@@ -264,7 +264,7 @@ public class Notify {
         }
         
         // Consolidate the summary files.
-        File consolidatedSummaryFile = consolidateSummaries(rptsDir, summaryFiles);
+        File consolidatedSummaryFile = consolidateSummaries(rptsDir, summaryFiles, priorities);
         
         // Notify the coordinators and modifiers.
         sendNotifications(notifications, rptTitles, consolidatedSummaryFile,
@@ -275,7 +275,7 @@ public class Notify {
         return InetAddress.getLocalHost().getCanonicalHostName();
     }
 
-    protected static File consolidateSummaries(File rptsDir, List<File> summaryFiles)
+    protected static File consolidateSummaries(File rptsDir, List<File> summaryFiles, Map<String, String> priorities)
             throws IOException {
         Map<String, Integer> summaryCnts = new HashMap<String, Integer>();
         for (File summaryFile: summaryFiles) {
@@ -284,17 +284,26 @@ public class Notify {
                 summaryCnts.put(line.get(0), new Integer(line.get(1)));
             }
         }
-        List<String> summaryRpts = summaryCnts.keySet().stream()
+        List<String> titles = summaryCnts.keySet().stream()
                 .sorted()
                 .collect(Collectors.toList());
         List<String> summaryLines = new ArrayList<String>();
-        for (String rpt: summaryRpts) {
-            String title = rpt.replace('_', ' ');
-            Integer itemCnt = summaryCnts.get(rpt);
+        for (String title: titles) {
+            String displayName = title.replace(' ', '_');
+            String priority = priorities.get(displayName);
+            System.out.println(title);
+            Integer itemCnt = summaryCnts.get(title);
             StringBuffer sb = new StringBuffer();
             sb.append("<tr>");
             sb.append("<td>");
             sb.append(title);
+            sb.append("</td>");
+            sb.append("<td>");
+            if (priority != null) {
+                sb.append("<span class=" + priority + ">");
+                sb.append(priority);
+                sb.append("</span>");
+            }
             sb.append("</td>");
             sb.append("<td>");
             sb.append(itemCnt);
