@@ -12,19 +12,21 @@ DatabaseObject_Without_Created	High	DatabaseObects missing a created slot value.
 Diagram_Compartment_Label_Missing	Blocker	Diagram compartment nodes whose name label is missing.
 Diagram_Compartment_Label_Occluded	High	Diagram compartment nodes whose name label is not easily readable.
 Diagram_Empty_Check	Blocker	Diagrams without pathway components.
+Diagram_Extra_ReactionLikeEvents		Diagrams with ReactionLikeEvents that are drawn but should not be. A RLE contained in the diagram database pathways should be drawn if and only if its parent pathway is not drawn as a ProcessNode.
 Diagram_Missing_Reactions	Blocker	Reactions contained in a Pathway which are not drawn in the pathway diagram.
-Diagram_Overlapping_Entities	Medium	Diagrams with overlapping entity representations
-Diagram_Overlapping_Reactions	Medium	Diagrams with overlapping reaction representations
-Diagram_Orphan_Entities	Blocker	Diagrams with entity nodes unconnected to any reaction
-Diagram_Reactions_With_Participant_Overlapping_Hub	Medium	Diagram reactions with a participant branch which overlaps the connection hub
-Diagram_Subpathways_Without_Participants	Blocker	Diagram subpathways without participants
+Diagram_Overlapping_Entities	Medium	Diagrams with overlapping entity representations.
+Diagram_Overlapping_Reactions	Medium	Diagrams with overlapping reaction representations.
+Diagram_Reactions_With_Participant_Overlapping_Hub	Medium	Diagram reactions with a participant branch which overlaps the connection hub.
+Diagram_Subpathway_Undiagrammed_Reactions		Human subpathways which do not have a diagram but are not embedded in the nearest ancestor pathway which has a diagram. The report lists the reactions which are not contained in the embedding diagram.
+Diagram_Unsynchronized_Reactions		Diagrams with a drawn reaction out of synchronization with the one in the database.
+Diagram_With_Unconnected_Entities	Blocker	Diagrams with entity nodes unconnected to any reaction.
 Diagram_Wrong_Renderable_Class	Blocker	Pathway diagram renderables whose renderable class is inconsistent with the represented instance's schema class.
 Deleted_Objects_In_Diagram	Blocker	Diagrams representing objects which were deleted from the database.
 EHLD_Subpathway_Change_Check	Blocker	Pathways with at least one EHLD subpathway which differs between two databases.
 Extra_Compartments_In_Entity_Set_Or_Members	High	EntitySets whose compartments differ from its members.
 FailedReaction_Has_Output	Blocker	FailedReactions that have an output value.
 InferredFrom_Used_In_Other_Attribute	High	"PhysicalEntities and Events whose inferredFrom value is also used as the value of another attribute, e.g. a human reaction has a mouse reaction as both its ""inferredFrom"" attribute and its ""precedingEvent"" attribute."
-Instance_Duplication	High	"Two different instances of the same class with the same values in their ""defining"" attributes"
+Instance_Duplication	High	Two different instances of the same class with the same values in their 'defining' attributes.
 Instances_Without_StableIdentifier	Blocker	"StableIdentifier instances whose identifier is missing, unused, duplicated or referred to more than once."
 Mandatory_Attributes	Blocker	Instances without a mandatory attribute value.
 Multiple_Attributes_Cross_Classes_Missing_Simultaneously	High	"Instances missing values simultaneously in several specified attributes, both its own and through a reference, e.g. a ReactionlikeEvent missing inferredFrom, literatureReference and its Summation's literartureReference."
