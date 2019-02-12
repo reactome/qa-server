@@ -92,6 +92,10 @@ import com.opencsv.CSVReaderHeaderAwareBuilder;
  */
 public class Notify {
 
+    private static final String AUTHORTOOL_MSG =
+            "When connecting to this slice database via the curator tool to check instances, " +
+            "please use the authortool credentials.";
+
     private static final String DEF_PRIORITY = "Medium";
 
     private static final String DB_NAME_PREFIX = "test_slice_";
@@ -291,7 +295,6 @@ public class Notify {
         for (String title: titles) {
             String displayName = title.replace(' ', '_');
             String priority = priorities.get(displayName);
-            System.out.println(title);
             Integer itemCnt = summaryCnts.get(title);
             StringBuffer sb = new StringBuffer();
             sb.append("<tr>");
@@ -609,6 +612,8 @@ public class Notify {
             bw.write(" on ");
             InetAddress ip = InetAddress.getLocalHost();
             bw.write(ip.getHostName());
+            bw.write(". ");
+            bw.write(AUTHORTOOL_MSG);
             bw.write("</p>");
             bw.newLine();
             bw.write("</body>");
@@ -751,7 +756,7 @@ public class Notify {
         if (COORDINATOR_EMAILS.contains(recipient)) {
             // Add the summary hyperlink.
             sb.append("<h3>");
-            sb.append("<a href='" + dirUrl + "/" + summaryFile.getName() + "'>");
+            sb.append("<a href='" + dirUrl + summaryFile.getName() + "'>");
             sb.append("Summary");
             sb.append("</a>");
             sb.append("</h3>");
