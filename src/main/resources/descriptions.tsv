@@ -14,8 +14,10 @@ Diagram_Compartment_Label_Occluded	High	Diagram compartment nodes whose name lab
 Diagram_Empty_Check	Blocker	Diagrams without pathway components.
 Diagram_Extra_ReactionLikeEvents		Diagrams with ReactionLikeEvents that are drawn but should not be. A RLE contained in the diagram database pathways should be drawn if and only if its parent pathway is not drawn as a ProcessNode.
 Diagram_Missing_Reactions	Blocker	Reactions contained in a Pathway which are not drawn in the pathway diagram.
+Diagram_EWAS_Modification_Mismatch		EntityWithAccessionedSequence instances with incorrectly displayed modification attachments.
 Diagram_Overlapping_Entities	Medium	Diagrams with overlapping entity representations.
 Diagram_Overlapping_Reactions	Medium	Diagrams with overlapping reaction representations.
+Diagram_Reactions_Type_Mismatch		Diagrams whose drawn reaction type differs from the annotated type.
 Diagram_Reactions_With_Participant_Overlapping_Hub	Medium	Diagram reactions with a participant branch which overlaps the connection hub.
 Diagram_Subpathway_Undiagrammed_Reactions		Human subpathways which do not have a diagram but are not embedded in the nearest ancestor pathway which has a diagram. The report lists the reactions which are not contained in the embedding diagram.
 Diagram_Unsynchronized_Reactions		Diagrams with a drawn reaction out of synchronization with the one in the database.
@@ -38,7 +40,7 @@ PhysicalEntity_With_More_Than_One_Compartment	High	PhysicalEntities (other than 
 PhysicalEntity_Without_Species_Components_With_Species	High	"PhysicalEntities (complex, set, polymer) with no species specified but with components having species specified."
 PrecedingEvent_Output_Not_Used_In_Reaction	Medium	RLEs which don't use an output of a precedingEvent.
 Reaction_Input_Output_Imbalance	High	Reactions whose input and output EWAS reference entities and residues do not match.
-Reaction_Single_Input_Output_Schema_Not_Matched	Medium	Reactions with only one input and one output but of differing schema class.
+Reaction_Single_Input_Output_Schema_Mismatch	Medium	Reactions with only one input and one output but of differing schema class.
 Reaction_Participants_Species_Mismatch	High	"Reactions whose species does not exactly equal the species of its participants. Both the ""species"" and ""relatedSpecies"" slot values are used."
 ReactionlikeEvent_Not_Failed_With_Normal_Without_Disease	High	Non-failed RLEs with a normalReaction value but without a disease value.
 Relations_Refer_To_Same_Instance	Medium	Instances with two attributes referring to the same instance for attributes which are not specified in other checks. WIll add an example in the future. None reported currently.
