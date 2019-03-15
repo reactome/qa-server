@@ -20,6 +20,7 @@ Diagram_Overlapping_Reactions	Medium	Diagrams with overlapping reaction represen
 Diagram_Reactions_Type_Mismatch		Diagrams whose drawn reaction type differs from the annotated type.
 Diagram_Reactions_With_Participant_Overlapping_Hub	Medium	Diagram reactions with a participant branch which overlaps the connection hub.
 Diagram_Subpathway_Undiagrammed_Reactions		Human subpathways which do not have a diagram but are not embedded in the nearest ancestor pathway which has a diagram. The report lists the reactions which are not contained in the embedding diagram.
+Diagram_Unrepresented_Reactions		"Human, normal reactions which are not represented in a diagram."
 Diagram_Unsynchronized_Reactions		Diagrams with a drawn reaction out of synchronization with the one in the database.
 Diagram_With_Unconnected_Entities	Blocker	Diagrams with entity nodes unconnected to any reaction.
 Diagram_Wrong_Renderable_Class	Blocker	Pathway diagram renderables whose renderable class is inconsistent with the represented instance's schema class.
