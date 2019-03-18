@@ -9,6 +9,7 @@ Complex_Compartment_Inconsistency	High	"Complexes exhibiting any of the followin
 Complex_Components_Species_Mismatch	High	Complexes whose species does not exactly equal the species of its components. Both the species and relatedSpecies slot values are used.
 DatabaseObject_With_Self_Loop	High	DatabaseObects which refer to itself.
 DatabaseObject_Without_Created	High	DatabaseObects missing a created slot value.
+Deleted_Objects_In_Diagram	Blocker	Diagrams representing objects which were deleted from the database.
 Diagram_Compartment_Label_Missing	Blocker	Diagram compartment nodes whose name label is missing.
 Diagram_Compartment_Label_Occluded	High	Diagram compartment nodes whose name label is not easily readable.
 Diagram_Empty_Check	Blocker	Diagrams without pathway components.
@@ -23,7 +24,7 @@ Diagram_Subpathway_Undiagrammed_Reactions		Human subpathways which do not have a
 Diagram_Unsynchronized_Reactions		Diagrams with a drawn reaction out of synchronization with the one in the database.
 Diagram_With_Unconnected_Entities	Blocker	Diagrams with entity nodes unconnected to any reaction.
 Diagram_Wrong_Renderable_Class	Blocker	Pathway diagram renderables whose renderable class is inconsistent with the represented instance's schema class.
-Deleted_Objects_In_Diagram	Blocker	Diagrams representing objects which were deleted from the database.
+Disease_Entity_Inconsistent		Disesase Entity instances which are either empty or are not a disease reaction participant.
 EHLD_Subpathway_Change_Check	Blocker	Pathways with at least one EHLD subpathway which differs between two databases.
 Extra_Compartments_In_Entity_Set_Or_Members	High	EntitySets whose compartments differ from its members.
 FailedReaction_Has_Output	Blocker	FailedReactions that have an output value.
@@ -34,8 +35,10 @@ Mandatory_Attributes	Blocker	Instances without a mandatory attribute value.
 Multiple_Attributes_Cross_Classes_Missing_Simultaneously	High	"Instances missing values simultaneously in several specified attributes, both its own and through a reference, e.g. a ReactionlikeEvent missing inferredFrom, literatureReference and its Summation's literartureReference."
 Multiple_Attributes_Missing_Simultaneously	High	"Instances missing values simultaneously in several of the instance's own specified attributes, e.g. a Person missing both firstname and initial."
 New_Event_Inconsistent	High	"Previously unreleased Events missing both an inferredFrom and a literatureReference value (or new events missing editorial attributes, edited, reviewed, or authored)."
+Normal_Entity_Inconsistent		Normal Entity instances which are either empty or are not a normal reaction participant.
 One_Hop_Circular_Reference	Medium	"Instances with a cycle through one direct reference, i.e. instance A references another instance B which references A. Often, this is a Pathway A with a hasEvent instance B that specifies Pathway A as precedingEvent."
 Orphan_Events	Blocker	Human non-chimeric events which are neither a top-level event nor contained by another event.
+Pathway_Without_Diagram		Pathways without an associated diagram. A pathway is regarded as having an associated diagram if it has its own PathwayDiagram or its contained RLEs  are drawn in its ancestor pathway diagram.
 PhysicalEntity_With_More_Than_One_Compartment	High	PhysicalEntities (other than sets) with more than one compartment specified.
 PhysicalEntity_Without_Species_Components_With_Species	High	"PhysicalEntities (complex, set, polymer) with no species specified but with components having species specified."
 PrecedingEvent_Output_Not_Used_In_Reaction	Medium	RLEs which don't use an output of a precedingEvent.
