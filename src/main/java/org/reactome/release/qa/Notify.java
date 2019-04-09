@@ -25,6 +25,7 @@ import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -121,6 +122,8 @@ public class Notify {
     private static final String NL = System.getProperty("line.separator");
 
     private static final String PROTOCOL = "http";
+
+    private static final Pattern IP_ADDR_PAT = Pattern.compile("^\\d+(\\.\\d+)+$");
 
     private static final String CURATORS_FILE = "curators.csv";
     
@@ -222,8 +225,7 @@ public class Notify {
         }
         
         // The prefix to prepend to URLs.
-        String host = getHost();
-        String hostPrefix = PROTOCOL + "://" + host;
+        String hostName = getHostName();
 
         // The QA reports directory.
         File rptsDir = new File(rptsDirArg);
@@ -239,6 +241,12 @@ public class Notify {
         Map<String, String> rptTitles = new HashMap<String, String>();
         // The summary files.
         List<File> summaryFiles = new ArrayList<File>();
+        // The HTTP host name prefix.
+        String hostPrefix = PROTOCOL + "://" + hostName;
+        if (!hostPrefix.endsWith("/")) {
+            hostPrefix = hostPrefix + "/";
+        }
+
         // Iterator over each reports subdirectory.
         Collection<File> subdirs = Stream.of(rptsDir.listFiles())
                 .filter(File::isDirectory)
@@ -262,25 +270,38 @@ public class Notify {
                         priority = DEF_PRIORITY;
                     }
                     addNotifications(file, title, emailLookup, description,
-                            priority, hostPrefix, dbName, notifications);
+                            priority, hostName, dbName, notifications);
                 }
             }
         }
         
         // Consolidate the summary files.
-        File consolidatedSummaryFile = consolidateSummaries(rptsDir, summaryFiles, priorities);
+        File consolidatedSummaryFile = consolidateSummaries(rptsDir, summaryFiles, priorities, hostName);
         
         // Notify the coordinators and modifiers.
         sendNotifications(notifications, rptTitles, consolidatedSummaryFile,
                 hostPrefix, emailLookup, props, rptsDir);
     }
 
-    private static String getHost() throws UnknownHostException {
-        return InetAddress.getLocalHost().getCanonicalHostName();
+    private static String getHostName() throws UnknownHostException {
+        InetAddress localHost = InetAddress.getLocalHost();
+        String hostName = localHost.getCanonicalHostName();
+        // If the server security does not allow reverse DNS lookup,
+        // then the canonical host name is the IP address. In that
+        // case, try the simple non-DSN host name. If that alternative
+        // is qualified with the domain, i.e is not just a prefix,
+        // then use that as the host name.
+        if (IP_ADDR_PAT.matcher(hostName).matches()) {
+            String altHost = localHost.getHostName();
+            if (altHost.split("\\.").length > 1) {
+                hostName = altHost;
+            }
+        }
+        return hostName;
     }
 
-    protected static File consolidateSummaries(File rptsDir, List<File> summaryFiles, Map<String, String> priorities)
-            throws IOException {
+    protected static File consolidateSummaries(File rptsDir, List<File> summaryFiles,
+            Map<String, String> priorities, String hostName) throws IOException {
         Map<String, Integer> summaryCnts = new HashMap<String, Integer>();
         for (File summaryFile: summaryFiles) {
             QAReport report = getQAReport(summaryFile);
@@ -318,7 +339,7 @@ public class Notify {
         File consolidatedFile = new File(rptsDir, SUMMARY_NOTIFICATION_FILE_NM);
         List<String> headings = Arrays.asList(SUMMARY_HDGS);
         String dbName = DB_NAME_PREFIX + rptsDir.getName();
-        writeNotificationFile(consolidatedFile, SUMMARY_TITLE, null, null, dbName, headings, summaryLines);
+        writeNotificationFile(consolidatedFile, SUMMARY_TITLE, null, null, hostName, dbName, headings, summaryLines);
         
         return consolidatedFile;
     }
@@ -435,7 +456,7 @@ public class Notify {
     }
 
     private static void addNotifications(File rptFile, String title, Map<String, String> emailLookup,
-            String description, String priority, String hostPrefix, String dbName, Map<String, Map<File, File>> notifications)
+            String description, String priority, String hostName, String dbName, Map<String, Map<File, File>> notifications)
                     throws Exception {
         // The QA report.
         QAReport report = getQAReport(rptFile);
@@ -450,6 +471,7 @@ public class Notify {
                 authorIndexes.add(authorNdx);
             }
         }
+        String hostPrefix = PROTOCOL + "://" + hostName;
         if (!hostPrefix.endsWith("/")) {
             hostPrefix = hostPrefix + "/";
         }
@@ -543,7 +565,7 @@ public class Notify {
                 effectiveTitle += " New Issues";
             }
             // Write the custom curator file.
-            writeNotificationFile(curatorFile, effectiveTitle, description, priority, dbName, report.headers, lines);
+            writeNotificationFile(curatorFile, effectiveTitle, description, priority, hostName, dbName, report.headers, lines);
             // Add the custom curator file to the
             // {curator: {report file: curator file}} map.
             Map<File, File> curatorNtfs = notifications.get(recipient);
@@ -556,7 +578,8 @@ public class Notify {
     }
 
     private static void writeNotificationFile(File file, String title, String description,
-            String priority, String dbName, List<String> headers, List<String> lines) throws IOException {
+            String priority, String hostName, String dbName, List<String> headers,
+            List<String> lines) throws IOException {
         String header = createHTMLTableHeader(headers);
         BufferedWriter bw = new BufferedWriter(new FileWriter(file));
         try {
@@ -610,8 +633,7 @@ public class Notify {
             bw.write("QA check trial slice database name: ");
             bw.write(dbName);
             bw.write(" on ");
-            InetAddress ip = InetAddress.getLocalHost();
-            bw.write(ip.getHostName());
+            bw.write(hostName);
             bw.write(". ");
             bw.write(AUTHORTOOL_MSG);
             bw.write("</p>");
@@ -715,9 +737,6 @@ public class Notify {
     private static void sendNotifications(Map<String, Map<File, File>> notifications,
             Map<String, String> rptTitles, File summaryFile, String hostPrefix,
             Map<String, String> emailLookup, Properties props, File rptsDir) throws Exception {
-        if (!hostPrefix.endsWith("/")) {
-            hostPrefix = hostPrefix + "/";
-        }
         String dirUrl = hostPrefix + "QAReports/" + rptsDir.getName();
         for (Entry<String, Map<File, File>> ntf: notifications.entrySet()) {
             String recipient = ntf.getKey();
