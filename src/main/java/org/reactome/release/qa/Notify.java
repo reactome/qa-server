@@ -210,8 +210,13 @@ public class Notify {
             for (Entry<String, List<String>> entry: qaInfo.entrySet()) {
                 String key = entry.getKey();
                 List<String> info = entry.getValue();
-                priorities.put(key, info.get(0));
-                descriptions.put(key, info.get(1));
+                String priority = info.get(0);
+                if (priority == null) {
+                    priority = DEF_PRIORITY;
+                }
+                priorities.put(key, priority);
+                String description = info.get(1);
+                descriptions.put(key, description);
             }
         }
         
@@ -266,9 +271,6 @@ public class Notify {
                     String displayName = toDisplayName(fileName);
                     String description = descriptions.get(displayName);
                     String priority = priorities.get(displayName);
-                    if (priority == null) {
-                        priority = DEF_PRIORITY;
-                    }
                     addNotifications(file, title, emailLookup, description,
                             priority, hostName, dbName, notifications);
                 }
@@ -276,7 +278,8 @@ public class Notify {
         }
         
         // Consolidate the summary files.
-        File consolidatedSummaryFile = consolidateSummaries(rptsDir, summaryFiles, priorities, hostName);
+        File consolidatedSummaryFile =
+                consolidateSummaries(rptsDir, summaryFiles, priorities, hostName);
         
         // Notify the coordinators and modifiers.
         sendNotifications(notifications, rptTitles, consolidatedSummaryFile,
@@ -300,7 +303,7 @@ public class Notify {
         return hostName;
     }
 
-    protected static File consolidateSummaries(File rptsDir, List<File> summaryFiles,
+    private static File consolidateSummaries(File rptsDir, List<File> summaryFiles,
             Map<String, String> priorities, String hostName) throws IOException {
         Map<String, Integer> summaryCnts = new HashMap<String, Integer>();
         for (File summaryFile: summaryFiles) {
@@ -323,11 +326,9 @@ public class Notify {
             sb.append(title);
             sb.append("</td>");
             sb.append("<td>");
-            if (priority != null) {
-                sb.append("<span class=" + priority + ">");
-                sb.append(priority);
-                sb.append("</span>");
-            }
+            sb.append("<span class=" + priority + ">");
+            sb.append(priority);
+            sb.append("</span>");
             sb.append("</td>");
             sb.append("<td>");
             sb.append(itemCnt);
