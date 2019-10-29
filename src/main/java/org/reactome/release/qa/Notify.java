@@ -121,6 +121,8 @@ public class Notify {
 
     private static final String NL = System.getProperty("line.separator");
 
+    private static final String SPACE = " ";
+
     private static final String PROTOCOL = "http";
 
     private static final Pattern IP_ADDR_PAT = Pattern.compile("^\\d+(\\.\\d+)+$");
@@ -138,10 +140,17 @@ public class Notify {
             new HashSet<String>(2);
     
     private static final String COORDINATOR_PRELUDE =
-            "The automated QA checks issued the following reports:";
+            "The automated QA checks issued the reports below.";
+
+    private static final String CHECK_DESCRIPTION_URL =
+           "https://docs.google.com/spreadsheets/d/1eoVAE4lKXSisxZl29fJR-9MhkUoUzTDJFz9qHRGUS1s/edit#gid=1104781337";
     
+    private static final String CHECK_DESCRIPTION =
+            String.format("A description of each check and hints regarding fixes can be found <a href=%s>here</a>.",
+                          CHECK_DESCRIPTION_URL);
+
     private static final String NONCOORDINATOR_PRELUDE =
-            "You are listed as the most recent author in the following automated QA reports:";
+            "You are listed as the most recent author in the automated QA reports below.";
 
     // The author is in the most recent modification column, which
     // has variant spellings.
@@ -756,9 +765,9 @@ public class Notify {
         }
         StringBuffer sb = new StringBuffer();
         if (COORDINATOR_EMAILS.contains(recipient)) {
-            sb.append(COORDINATOR_PRELUDE + NL + NL);
+            sb.append(COORDINATOR_PRELUDE + SPACE + CHECK_DESCRIPTION + NL + NL);
         } else {
-            sb.append(NONCOORDINATOR_PRELUDE + NL + NL);
+            sb.append(NONCOORDINATOR_PRELUDE + SPACE + CHECK_DESCRIPTION + NL + NL);
         }
         // Sort the reports by name.
         Comparator<File> compare = new Comparator<File>() {
