@@ -3,3 +3,7 @@
 .settings
 /resources
 target
+
+# IntelliJ files
+.idea/
+*.iml
